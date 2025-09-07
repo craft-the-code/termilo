@@ -1,11 +1,13 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use ssh2::Session;
 use std::net::TcpStream;
 use std::io::{Read, Write};
 use serde::{Serialize, Deserialize};
+use tauri::{State, Window, Emitter};
+use std::time::{Duration, Instant};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct ServerProfile {
     id: String,
     name: String,
@@ -17,23 +19,43 @@ struct ServerProfile {
     key_path: Option<String>,
 }
 
+#[derive(Serialize, Clone)]
+struct SSHOutputEvent {
+    session_id: String,
+    data: String,
+}
+
+#[derive(Serialize, Clone)]
+struct SSHClosedEvent {
+    session_id: String,
+    message: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+struct SSHErrorEvent {
+    session_id: String,
+    error: String,
+}
+
 struct SSHSession {
     session: Session,
     channel: ssh2::Channel,
     is_connected: bool,
 }
 
+// Wrap the Mutex in an Arc for thread-safe cloning
 struct AppState {
-    ssh_sessions: Mutex<HashMap<String, SSHSession>>,
+    ssh_sessions: Arc<Mutex<HashMap<String, SSHSession>>>,
 }
 
 #[tauri::command]
 async fn connect_ssh(
     profile: ServerProfile,
     session_id: String,
-    state: tauri::State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> Result<String, String> {
-    // Check if session already exists and is connected
+    println!("Connecting to SSH session: {}", session_id);
+
     {
         let sessions = state.ssh_sessions.lock().unwrap();
         if let Some(existing_session) = sessions.get(&session_id) {
@@ -50,7 +72,6 @@ async fn connect_ssh(
     sess.set_tcp_stream(tcp);
     sess.handshake().map_err(|e| format!("Handshake failed: {}", e))?;
 
-    // Authentication
     match profile.auth_method.as_str() {
         "password" => {
             let password = profile.password.ok_or("Password required")?;
@@ -72,17 +93,19 @@ async fn connect_ssh(
     let mut channel = sess.channel_session()
         .map_err(|e| format!("Channel error: {}", e))?;
 
-    channel.request_pty("xterm", None, None)
+    channel.request_pty("xterm-256color", None, Some((80, 24, 0, 0)))
         .map_err(|e| format!("PTY error: {}", e))?;
 
     channel.shell().map_err(|e| format!("Shell error: {}", e))?;
 
-    // Set session to non-blocking mode (affects all channels)
+
+
     sess.set_blocking(false);
 
-    // Enable input streaming - merge stderr with stdout
     channel.handle_extended_data(ssh2::ExtendedData::Merge)
         .map_err(|e| format!("Extended data error: {}", e))?;
+
+    println!("SSH session {} connected successfully", session_id);
 
     let ssh_session = SSHSession {
         session: sess,
@@ -99,7 +122,7 @@ async fn connect_ssh(
 async fn send_command(
     session_id: String,
     command: String,
-    state: tauri::State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> Result<String, String> {
     let mut sessions = state.ssh_sessions.lock().unwrap();
     let ssh_session = sessions.get_mut(&session_id)
@@ -109,17 +132,12 @@ async fn send_command(
         return Err("Session not connected".to_string());
     }
 
-    // Handle fast typing by batching small writes
     match ssh_session.channel.write_all(command.as_bytes()) {
         Ok(_) => {
-            // Only flush occasionally to avoid overwhelming the connection
-            if command.contains('\n') || command.contains('\r') || command.len() > 10 {
-                let _ = ssh_session.channel.flush();
-            }
+            let _ = ssh_session.channel.flush();
             Ok("Command sent".to_string())
         },
         Err(e) => {
-            // Don't immediately mark as disconnected for write errors during fast typing
             if e.kind() == std::io::ErrorKind::WouldBlock {
                 Ok("Command queued".to_string())
             } else {
@@ -131,69 +149,118 @@ async fn send_command(
 }
 
 #[tauri::command]
-async fn read_output(
+async fn read_output_stream(
+    window: Window,
     session_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
-    let mut sessions = state.ssh_sessions.lock().unwrap();
-    let ssh_session = sessions.get_mut(&session_id)
-        .ok_or("Session not found")?;
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Clone the Arc to pass it into the async task
+    let sessions_arc = state.ssh_sessions.clone();
 
-    if !ssh_session.is_connected {
-        return Err("Session not connected".to_string());
-    }
+    // Use tokio::spawn from the Tauri runtime
+    tauri::async_runtime::spawn(async move {
+        let mut buffer = [0; 8192]; // Larger buffer for better performance
+        let mut output_buffer = String::new();
+        let mut last_emit = Instant::now();
 
-    let mut buffer = [0; 4096];
-    match ssh_session.channel.read(&mut buffer) {
-        Ok(0) => {
-            // Check if channel is EOF or closed
-            if ssh_session.channel.eof() {
-                ssh_session.is_connected = false;
-                return Err("Connection closed".to_string());
-            }
-            Ok("".to_string())
-        },
-        Ok(n) => {
-            let output = String::from_utf8_lossy(&buffer[..n]).to_string();
-            Ok(output)
-        },
-        Err(e) => {
-            match e.kind() {
-                std::io::ErrorKind::WouldBlock => {
-                    // Non-blocking read with no data available
-                    Ok("".to_string())
-                },
-                std::io::ErrorKind::TimedOut => {
-                    // Timeout is normal for non-blocking reads
-                    Ok("".to_string())
-                },
-                _ => {
-                    // Real error, mark session as disconnected
-                    ssh_session.is_connected = false;
-                    Err(format!("Read error: {}", e))
+        // Batch output for better performance
+        const EMIT_INTERVAL_MS: u64 = 16; // ~60fps
+        const MAX_BUFFER_SIZE: usize = 4096;
+
+        loop {
+            let should_continue = {
+                // Minimize mutex lock time
+                let mut sessions = sessions_arc.lock().unwrap();
+
+                let ssh_session = match sessions.get_mut(&session_id) {
+                    Some(s) => s,
+                    None => break, // Session removed
+                };
+
+                if !ssh_session.is_connected {
+                    let _ = window.emit("ssh-output-closed", SSHClosedEvent {
+                        session_id: session_id.clone(),
+                        message: Some("Session disconnected".to_string()),
+                    });
+                    break;
                 }
+
+                match ssh_session.channel.read(&mut buffer) {
+                    Ok(0) => {
+                        if ssh_session.channel.eof() {
+                            ssh_session.is_connected = false;
+                            let _ = window.emit("ssh-output-closed", SSHClosedEvent {
+                                session_id: session_id.clone(),
+                                message: Some("EOF reached".to_string()),
+                            });
+                            false // Stop loop
+                        } else {
+                            true // Continue, no data available yet
+                        }
+                    },
+                    Ok(n) => {
+                        let new_output = String::from_utf8_lossy(&buffer[..n]);
+                        output_buffer.push_str(&new_output);
+                        true // Continue
+                    },
+                    Err(e) => {
+                        if e.kind() == std::io::ErrorKind::WouldBlock {
+                            true // Continue, no data available
+                        } else {
+                            eprintln!("Read error for session {}: {}", session_id, e);
+                            let _ = window.emit("ssh-output-error", SSHErrorEvent {
+                                session_id: session_id.clone(),
+                                error: e.to_string(),
+                            });
+                            sessions.remove(&session_id);
+                            false // Stop loop
+                        }
+                    }
+                }
+            }; // Mutex lock released here
+
+            if !should_continue {
+                break;
+            }
+
+            // Emit buffered output at intervals or when buffer is large
+            let now = Instant::now();
+            let should_emit = !output_buffer.is_empty() && (
+                now.duration_since(last_emit).as_millis() >= EMIT_INTERVAL_MS as u128 ||
+                output_buffer.len() >= MAX_BUFFER_SIZE
+            );
+
+            if should_emit {
+                let _ = window.emit("ssh-output", SSHOutputEvent {
+                    session_id: session_id.clone(),
+                    data: output_buffer.clone(),
+                });
+                output_buffer.clear();
+                last_emit = now;
+            }
+
+            // Small sleep only when no data was read
+            if output_buffer.is_empty() {
+                std::thread::sleep(Duration::from_millis(1)); // Reduced from 10ms
             }
         }
-    }
-}
 
-#[tauri::command]
-async fn check_connection(
-    session_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<bool, String> {
-    let sessions = state.ssh_sessions.lock().unwrap();
-    if let Some(ssh_session) = sessions.get(&session_id) {
-        Ok(ssh_session.is_connected && !ssh_session.channel.eof())
-    } else {
-        Ok(false)
-    }
+        // Emit any remaining buffered output
+        if !output_buffer.is_empty() {
+            let _ = window.emit("ssh-output", SSHOutputEvent {
+                session_id: session_id.clone(),
+                data: output_buffer,
+            });
+        }
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
 async fn disconnect_ssh(
     session_id: String,
-    state: tauri::State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> Result<String, String> {
     let mut sessions = state.ssh_sessions.lock().unwrap();
     if let Some(mut ssh_session) = sessions.remove(&session_id) {
@@ -204,23 +271,10 @@ async fn disconnect_ssh(
     Ok("Disconnected".to_string())
 }
 
-#[tauri::command]
-async fn get_active_sessions(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<String>, String> {
-    let sessions = state.ssh_sessions.lock().unwrap();
-    let active_sessions: Vec<String> = sessions
-        .iter()
-        .filter(|(_, session)| session.is_connected)
-        .map(|(id, _)| id.clone())
-        .collect();
-    Ok(active_sessions)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState {
-        ssh_sessions: Mutex::new(HashMap::new()),
+        ssh_sessions: Arc::new(Mutex::new(HashMap::new())),
     };
 
     tauri::Builder::default()
@@ -228,10 +282,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             connect_ssh,
             send_command,
-            read_output,
-            check_connection,
-            disconnect_ssh,
-            get_active_sessions
+            read_output_stream,
+            disconnect_ssh
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

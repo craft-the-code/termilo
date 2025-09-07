@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useStore } from '../store/useStore';
 import '@xterm/xterm/css/xterm.css';
 
@@ -13,45 +14,25 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
     const terminalRef = useRef<HTMLDivElement>(null);
     const terminal = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
-    const readIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const isActiveRef = useRef(true);
+    const isInitialized = useRef(false);
+    const isConnecting = useRef(false);
+    const streamStarted = useRef(false);
+    const keyboardHandlerRef = useRef<any>(null);
     const { sessions, profiles, updateSession } = useStore();
 
     const session = sessions.find(s => s.id === sessionId);
     const profile = profiles.find(p => p.id === session?.profileId);
 
-    const readOutput = useCallback(async () => {
-        if (!session?.isConnected || !isActiveRef.current) return;
-
-        try {
-            const output = await invoke('read_output', { sessionId });
-            if (output && terminal.current) {
-                terminal.current.write(output as string);
-            }
-        } catch (error) {
-            console.warn('Read error (non-fatal):', error);
-        }
-    }, [sessionId, session?.isConnected]);
-
-    const startPolling = useCallback(() => {
-        if (readIntervalRef.current) return;
-        readIntervalRef.current = setInterval(readOutput, 150);
-    }, [readOutput]);
-
-    const stopPolling = useCallback(() => {
-        if (readIntervalRef.current) {
-            clearInterval(readIntervalRef.current);
-            readIntervalRef.current = null;
-        }
-    }, []);
-
     const connectToSSH = useCallback(async () => {
-        if (!session || !profile || session.isConnected || session.isConnecting) return;
+        if (!session || !profile || session.isConnected || isConnecting.current) {
+            return;
+        }
 
+        isConnecting.current = true;
         updateSession(sessionId, { isConnecting: true });
 
         try {
-            await invoke('connect_ssh', {
+            const result = await invoke('connect_ssh', {
                 profile: {
                     id: profile.id,
                     name: profile.name,
@@ -65,70 +46,104 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
                 sessionId
             });
 
-            terminal.current?.writeln(`Connected to ${profile.name}`);
+            console.log('Connection result:', result);
+
+            if (terminal.current) {
+                terminal.current.writeln(`Connected to ${profile.name}`);
+            }
+
             updateSession(sessionId, {
                 isConnected: true,
                 isConnecting: false
             });
 
-            // Focus terminal after successful connection
-            terminal.current?.focus();
+            // Start reading output stream with a small delay
+            setTimeout(async () => {
+                if (!streamStarted.current) {
+                    streamStarted.current = true;
+                    try {
+                        await invoke('read_output_stream', { sessionId });
+                        console.log('Output stream started');
+                    } catch (error) {
+                        console.error('Failed to start output stream:', error);
+                        streamStarted.current = false;
+                    }
+                }
+            }, 500);
 
-            if (isActiveRef.current) {
-                startPolling();
+            // Focus terminal after successful connection
+            if (terminal.current) {
+                terminal.current.focus();
             }
         } catch (error) {
+            console.error('Connection error:', error);
             updateSession(sessionId, {
                 isConnected: false,
                 isConnecting: false
             });
-            terminal.current?.writeln(`Connection failed: ${error}`);
+
+            if (terminal.current) {
+                terminal.current.writeln(`Connection failed: ${error}`);
+            }
+        } finally {
+            isConnecting.current = false;
         }
-    }, [session, profile, sessionId, startPolling, updateSession]);
+    }, [session, profile, sessionId, updateSession]);
 
-    // Handle tab visibility changes
+    // Listen for SSH output events
     useEffect(() => {
-        const handleVisibilityChange = () => {
-            isActiveRef.current = !document.hidden;
-            if (document.hidden) {
-                stopPolling();
-            } else if (session?.isConnected) {
-                startPolling();
-            }
+        let outputUnlisten: (() => void) | null = null;
+        let closedUnlisten: (() => void) | null = null;
+        let errorUnlisten: (() => void) | null = null;
+
+        const setupListeners = async () => {
+            // Optimized output handling - expect structured events from new backend
+            outputUnlisten = await listen<{ session_id: string; data: string }>('ssh-output', (event) => {
+                if (event.payload.session_id === sessionId) {
+                    if (terminal.current) {
+                        // Direct write for maximum performance
+                        terminal.current.write(event.payload.data);
+                    }
+                }
+            });
+
+            closedUnlisten = await listen<{ session_id: string; message?: string }>('ssh-output-closed', (event) => {
+                if (event.payload.session_id === sessionId) {
+                    updateSession(sessionId, { isConnected: false, isConnecting: false });
+                    if (terminal.current) {
+                        terminal.current.writeln('\r\n\x1b[31mConnection closed\x1b[0m');
+                    }
+                }
+            });
+
+            errorUnlisten = await listen<{ session_id: string; error: string }>('ssh-output-error', (event) => {
+                if (event.payload.session_id === sessionId) {
+                    if (terminal.current) {
+                        terminal.current.writeln(`\r\n\x1b[31mError: ${event.payload.error}\x1b[0m`);
+                    }
+                    updateSession(sessionId, { isConnected: false, isConnecting: false });
+                }
+            });
         };
 
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [session?.isConnected, startPolling, stopPolling]);
-
-    // Handle window focus/blur
-    useEffect(() => {
-        const handleFocus = () => {
-            isActiveRef.current = true;
-            if (session?.isConnected) {
-                startPolling();
-            }
-        };
-
-        const handleBlur = () => {
-            isActiveRef.current = false;
-            stopPolling();
-        };
-
-        window.addEventListener('focus', handleFocus);
-        window.addEventListener('blur', handleBlur);
+        setupListeners();
 
         return () => {
-            window.removeEventListener('focus', handleFocus);
-            window.removeEventListener('blur', handleBlur);
+            outputUnlisten?.();
+            closedUnlisten?.();
+            errorUnlisten?.();
         };
-    }, [session?.isConnected, startPolling, stopPolling]);
+    }, [sessionId, updateSession]);
 
     // Handle window resize
     useEffect(() => {
         const handleResize = () => {
             if (terminal.current && fitAddonRef.current) {
-                fitAddonRef.current.fit();
+                try {
+                    fitAddonRef.current.fit();
+                } catch (error) {
+                    console.warn('Resize error:', error);
+                }
             }
         };
 
@@ -136,73 +151,106 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Initialize terminal and fit addon once
+    // Initialize terminal - prevent double initialization
     useEffect(() => {
-        if (!terminalRef.current) return;
+        if (!terminalRef.current || terminal.current || isInitialized.current) return;
 
-        if (!terminal.current) {
-            terminal.current = new Terminal({
-                cursorBlink: true,
-                fontSize: 14,
-                fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-                theme: {
-                    background: '#1a1a1a',
-                    foreground: '#ffffff',
-                    cursor: '#ffffff',
-                    selectionBackground: '#ffffff40',
-                },
-            });
-            const fitAddon = new FitAddon();
-            fitAddonRef.current = fitAddon;
-            terminal.current.loadAddon(fitAddon);
-            terminal.current.open(terminalRef.current);
-            fitAddon.fit();
-            terminal.current.focus();
-        }
+        console.log('Initializing terminal for session:', sessionId);
+        isInitialized.current = true;
+
+        terminal.current = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+            theme: {
+                background: '#1a1a1a',
+                foreground: '#ffffff',
+                cursor: '#ffffff',
+                selectionBackground: '#ffffff40',
+            },
+        });
+
+        const fitAddon = new FitAddon();
+        fitAddonRef.current = fitAddon;
+        terminal.current.loadAddon(fitAddon);
+        terminal.current.open(terminalRef.current);
+
+        // Small delay before fitting to ensure DOM is ready
+        setTimeout(() => {
+            if (fitAddon && terminal.current) {
+                try {
+                    fitAddon.fit();
+                    terminal.current.focus();
+                } catch (error) {
+                    console.warn('Initial fit error:', error);
+                }
+            }
+        }, 100);
     }, []);
-
-    // Handle terminal input based on connection status
     useEffect(() => {
         if (!terminal.current) return;
 
-        const onDataDisposable = terminal.current.onData((data) => {
+        // Remove existing handler if any
+        if (keyboardHandlerRef.current) {
+            keyboardHandlerRef.current.dispose();
+            keyboardHandlerRef.current = null;
+        }
+
+        console.log('binding keyboard');
+        // Add new handler
+        keyboardHandlerRef.current = terminal.current.onData((data) => {
             if (session?.isConnected) {
                 invoke('send_command', { sessionId, command: data }).catch(console.error);
             }
         });
 
         return () => {
-            onDataDisposable.dispose();
+            if (keyboardHandlerRef.current) {
+                keyboardHandlerRef.current.dispose();
+                keyboardHandlerRef.current = null;
+            }
         };
     }, [session?.isConnected, sessionId]);
 
-    // Manage connection and polling
+    // Auto-connect - only once when ready
     useEffect(() => {
-        if (!session || !profile) return;
+        if (!session || !profile || !terminal.current) return;
+        if (session.isConnected || session.isConnecting) return;
 
-        if (!session.isConnected && !session.isConnecting) {
+        // Add a small delay to prevent multiple rapid connections
+        const timeoutId = setTimeout(() => {
+            console.log('Auto-connecting session:', sessionId);
             connectToSSH();
-        } else if (session.isConnected) {
-            if (isActiveRef.current) {
-                startPolling();
-            }
-        }
+        }, 100);
 
-        return () => {
-            stopPolling();
-        };
-    }, [session, profile, sessionId, connectToSSH, startPolling, stopPolling]);
+        return () => clearTimeout(timeoutId);
+    }, [session?.id, profile?.id]); // Removed connectToSSH to prevent loops
 
-    // Cleanup on unmount
+    // Cleanup on unmount only
     useEffect(() => {
         return () => {
-            stopPolling();
+            console.log('Cleaning up terminal for session:', sessionId);
+
+            if (session?.isConnected) {
+                invoke('disconnect_ssh', { sessionId }).catch(console.error);
+            }
+
             if (terminal.current) {
                 terminal.current.dispose();
-                terminal.current = null;
+            }
+
+            terminal.current = null;
+            fitAddonRef.current = null;
+            isInitialized.current = false;
+            isConnecting.current = false;
+            streamStarted.current = false;
+
+            if (keyboardHandlerRef.current) {
+                keyboardHandlerRef.current.dispose();
+                keyboardHandlerRef.current = null;
             }
         };
-    }, [stopPolling]);
+    }, []); // Empty dependency array - only on unmount
 
     return (
         <div className="h-full bg-black relative">
@@ -217,7 +265,11 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
             <div
                 ref={terminalRef}
                 className="h-full w-full p-2"
-                onClick={() => terminal.current?.focus()}
+                onClick={() => {
+                    if (terminal.current) {
+                        terminal.current.focus();
+                    }
+                }}
             />
         </div>
     );

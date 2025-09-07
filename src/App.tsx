@@ -26,7 +26,7 @@ function App() {
 
                 {/* Terminal Area */}
                 <div className="flex-1">
-                    {activeSessionId ? (
+                    {activeSessionId && activeSessionId.trim() ? (
                         <TerminalView sessionId={activeSessionId} />
                     ) : (
                         <div className="h-full flex items-center justify-center text-gray-500">
