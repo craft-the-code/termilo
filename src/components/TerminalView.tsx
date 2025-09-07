@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
 import { invoke } from '@tauri-apps/api/core';
 import { useStore } from '../store/useStore';
 import '@xterm/xterm/css/xterm.css';
@@ -11,52 +12,44 @@ interface TerminalViewProps {
 export default function TerminalView({ sessionId }: TerminalViewProps) {
     const terminalRef = useRef<HTMLDivElement>(null);
     const terminal = useRef<Terminal | null>(null);
+    const fitAddonRef = useRef<FitAddon | null>(null);
+    const readIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const isActiveRef = useRef(true);
     const { sessions, profiles, updateSession } = useStore();
 
     const session = sessions.find(s => s.id === sessionId);
     const profile = profiles.find(p => p.id === session?.profileId);
 
-    useEffect(() => {
-        if (!terminalRef.current || !session || !profile) return;
+    const readOutput = useCallback(async () => {
+        if (!session?.isConnected || !isActiveRef.current) return;
 
-        // Initialize terminal
-        terminal.current = new Terminal({
-            cursorBlink: true,
-            fontSize: 14,
-            fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-            theme: {
-                background: '#1a1a1a',
-                foreground: '#ffffff',
-                cursor: '#ffffff',
-                selectionBackground: '#ffffff40',
-            },
-            rows: 24,
-            cols: 80,
-        });
-
-        terminal.current.open(terminalRef.current);
-
-        // Handle terminal input
-        terminal.current.onData((data) => {
-            if (session.isConnected) {
-                invoke('send_command', { sessionId, command: data });
+        try {
+            const output = await invoke('read_output', { sessionId });
+            if (output && terminal.current) {
+                terminal.current.write(output as string);
             }
-        });
+        } catch (error) {
+            // Only disconnect on persistent errors, not temporary throttling
+            console.warn('Read error (non-fatal):', error);
+            // Don't immediately disconnect - let connection persist
+        }
+    }, [sessionId, session?.isConnected]);
 
-        // Connect to SSH
-        connectToSSH();
+    const startPolling = useCallback(() => {
+        if (readIntervalRef.current) return;
+        // Increase interval to reduce server load during fast typing
+        readIntervalRef.current = setInterval(readOutput, 150);
+    }, [readOutput]);
 
-        // Start output reading loop
-        const outputInterval = setInterval(readOutput, 100);
+    const stopPolling = useCallback(() => {
+        if (readIntervalRef.current) {
+            clearInterval(readIntervalRef.current);
+            readIntervalRef.current = null;
+        }
+    }, []);
 
-        return () => {
-            clearInterval(outputInterval);
-            terminal.current?.dispose();
-        };
-    }, [sessionId]);
-
-    const connectToSSH = async () => {
-        if (!session || !profile) return;
+    const connectToSSH = useCallback(async () => {
+        if (!session || !profile || session.isConnected || session.isConnecting) return;
 
         updateSession(sessionId, { isConnecting: true });
 
@@ -75,43 +68,153 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
                 sessionId
             });
 
+            terminal.current?.writeln(`Connected to ${profile.name}`);
             updateSession(sessionId, {
                 isConnected: true,
                 isConnecting: false
             });
 
-            terminal.current?.writeln(`Connected to ${profile.name}`);
+            // Focus terminal after successful connection
+            terminal.current?.focus();
+
+            if (isActiveRef.current) {
+                startPolling();
+            }
         } catch (error) {
             updateSession(sessionId, {
                 isConnected: false,
                 isConnecting: false
             });
-
             terminal.current?.writeln(`Connection failed: ${error}`);
         }
-    };
+    }, [session, profile, sessionId, startPolling, updateSession]);
 
-    const readOutput = async () => {
-        if (!session?.isConnected) return;
+    // Handle tab visibility changes
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            isActiveRef.current = !document.hidden;
 
-        try {
-            const output = await invoke('read_output', { sessionId });
-            if (output && terminal.current) {
-                terminal.current.write(output as string);
+            if (document.hidden) {
+                stopPolling();
+            } else if (session?.isConnected) {
+                startPolling();
             }
-        } catch (error) {
-            console.error('Read error:', error);
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [session?.isConnected, startPolling, stopPolling]);
+
+    // Handle window focus/blur for additional safety
+    useEffect(() => {
+        const handleFocus = () => {
+            isActiveRef.current = true;
+            if (session?.isConnected) {
+                startPolling();
+            }
+        };
+
+        const handleBlur = () => {
+            isActiveRef.current = false;
+            stopPolling();
+        };
+
+        window.addEventListener('focus', handleFocus);
+        window.addEventListener('blur', handleBlur);
+
+        return () => {
+            window.removeEventListener('focus', handleFocus);
+            window.removeEventListener('blur', handleBlur);
+        };
+    }, [session?.isConnected, startPolling, stopPolling]);
+
+    // Handle window resize
+    useEffect(() => {
+        const handleResize = () => {
+            if (terminal.current && fitAddonRef.current) {
+                fitAddonRef.current.fit();
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Initialize terminal and connection
+    useEffect(() => {
+        if (!terminalRef.current || !session || !profile) return;
+
+        // Initialize terminal only once
+        if (!terminal.current) {
+            terminal.current = new Terminal({
+                cursorBlink: true,
+                fontSize: 14,
+                fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                theme: {
+                    background: '#1a1a1a',
+                    foreground: '#ffffff',
+                    cursor: '#ffffff',
+                    selectionBackground: '#ffffff40',
+                },
+            });
+
+            terminal.current.open(terminalRef.current);
+
+            // Fit terminal to container size
+            const fitAddon = new FitAddon();
+            fitAddonRef.current = fitAddon;
+            terminal.current.loadAddon(fitAddon);
+            fitAddon.fit();
+
+            // Focus terminal immediately after opening
+            terminal.current.focus();
+
+            // Handle terminal input
+            terminal.current.onData((data) => {
+                if (session.isConnected) {
+                    invoke('send_command', { sessionId, command: data }).catch(console.error);
+                }
+            });
         }
-    };
+
+        // Connect if not already connected
+        if (!session.isConnected && !session.isConnecting) {
+            connectToSSH();
+        } else if (session.isConnected && isActiveRef.current) {
+            startPolling();
+        }
+
+        return () => {
+            stopPolling();
+        };
+    }, [sessionId, session?.isConnected, session?.isConnecting, connectToSSH, startPolling, stopPolling]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            stopPolling();
+            if (terminal.current) {
+                terminal.current.dispose();
+                terminal.current = null;
+            }
+        };
+    }, [stopPolling]);
 
     return (
         <div className="h-full bg-black relative">
             {session?.isConnecting && (
                 <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white z-10">
-                    Connecting to {profile?.name}...
+                    <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+                        <div>Connecting to {profile?.name}...</div>
+                    </div>
                 </div>
             )}
-            <div ref={terminalRef} className="h-full w-full p-2" />
+            <div
+                ref={terminalRef}
+                className="h-full w-full p-2"
+                onClick={() => terminal.current?.focus()}
+            />
         </div>
     );
 }

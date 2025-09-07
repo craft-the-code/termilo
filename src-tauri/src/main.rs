@@ -20,6 +20,7 @@ struct ServerProfile {
 struct SSHSession {
     session: Session,
     channel: ssh2::Channel,
+    is_connected: bool,
 }
 
 struct AppState {
@@ -32,9 +33,19 @@ async fn connect_ssh(
     session_id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
+    // Check if session already exists and is connected
+    {
+        let sessions = state.ssh_sessions.lock().unwrap();
+        if let Some(existing_session) = sessions.get(&session_id) {
+            if existing_session.is_connected {
+                return Ok("Already connected".to_string());
+            }
+        }
+    }
+
     let tcp = TcpStream::connect(format!("{}:{}", profile.host, profile.port))
         .map_err(|e| format!("Connection failed: {}", e))?;
-    
+
     let mut sess = Session::new().map_err(|e| format!("Session error: {}", e))?;
     sess.set_tcp_stream(tcp);
     sess.handshake().map_err(|e| format!("Handshake failed: {}", e))?;
@@ -60,13 +71,25 @@ async fn connect_ssh(
 
     let mut channel = sess.channel_session()
         .map_err(|e| format!("Channel error: {}", e))?;
-    
+
     channel.request_pty("xterm", None, None)
         .map_err(|e| format!("PTY error: {}", e))?;
 
     channel.shell().map_err(|e| format!("Shell error: {}", e))?;
 
-    let ssh_session = SSHSession { session: sess, channel };
+    // Set session to non-blocking mode (affects all channels)
+    sess.set_blocking(false);
+
+    // Enable input streaming - merge stderr with stdout
+    channel.handle_extended_data(ssh2::ExtendedData::Merge)
+        .map_err(|e| format!("Extended data error: {}", e))?;
+
+    let ssh_session = SSHSession {
+        session: sess,
+        channel,
+        is_connected: true
+    };
+
     state.ssh_sessions.lock().unwrap().insert(session_id.clone(), ssh_session);
 
     Ok("Connected".to_string())
@@ -82,10 +105,29 @@ async fn send_command(
     let ssh_session = sessions.get_mut(&session_id)
         .ok_or("Session not found")?;
 
-    ssh_session.channel.write_all(command.as_bytes())
-        .map_err(|e| format!("Write error: {}", e))?;
+    if !ssh_session.is_connected {
+        return Err("Session not connected".to_string());
+    }
 
-    Ok("Command sent".to_string())
+    // Handle fast typing by batching small writes
+    match ssh_session.channel.write_all(command.as_bytes()) {
+        Ok(_) => {
+            // Only flush occasionally to avoid overwhelming the connection
+            if command.contains('\n') || command.contains('\r') || command.len() > 10 {
+                let _ = ssh_session.channel.flush();
+            }
+            Ok("Command sent".to_string())
+        },
+        Err(e) => {
+            // Don't immediately mark as disconnected for write errors during fast typing
+            if e.kind() == std::io::ErrorKind::WouldBlock {
+                Ok("Command queued".to_string())
+            } else {
+                ssh_session.is_connected = false;
+                Err(format!("Write error: {}", e))
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -97,11 +139,16 @@ async fn read_output(
     let ssh_session = sessions.get_mut(&session_id)
         .ok_or("Session not found")?;
 
+    if !ssh_session.is_connected {
+        return Err("Session not connected".to_string());
+    }
+
     let mut buffer = [0; 4096];
     match ssh_session.channel.read(&mut buffer) {
         Ok(0) => {
             // Check if channel is EOF or closed
             if ssh_session.channel.eof() {
+                ssh_session.is_connected = false;
                 return Err("Connection closed".to_string());
             }
             Ok("".to_string())
@@ -111,13 +158,35 @@ async fn read_output(
             Ok(output)
         },
         Err(e) => {
-            // For non-blocking read, timeout is normal
-            if e.kind() == std::io::ErrorKind::TimedOut || e.kind() == std::io::ErrorKind::WouldBlock {
-                Ok("".to_string())
-            } else {
-                Err(format!("Read error: {}", e))
+            match e.kind() {
+                std::io::ErrorKind::WouldBlock => {
+                    // Non-blocking read with no data available
+                    Ok("".to_string())
+                },
+                std::io::ErrorKind::TimedOut => {
+                    // Timeout is normal for non-blocking reads
+                    Ok("".to_string())
+                },
+                _ => {
+                    // Real error, mark session as disconnected
+                    ssh_session.is_connected = false;
+                    Err(format!("Read error: {}", e))
+                }
             }
         }
+    }
+}
+
+#[tauri::command]
+async fn check_connection(
+    session_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+    let sessions = state.ssh_sessions.lock().unwrap();
+    if let Some(ssh_session) = sessions.get(&session_id) {
+        Ok(ssh_session.is_connected && !ssh_session.channel.eof())
+    } else {
+        Ok(false)
     }
 }
 
@@ -127,8 +196,25 @@ async fn disconnect_ssh(
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let mut sessions = state.ssh_sessions.lock().unwrap();
-    sessions.remove(&session_id);
+    if let Some(mut ssh_session) = sessions.remove(&session_id) {
+        ssh_session.is_connected = false;
+        let _ = ssh_session.channel.close();
+        let _ = ssh_session.session.disconnect(None, "User disconnected", None);
+    }
     Ok("Disconnected".to_string())
+}
+
+#[tauri::command]
+async fn get_active_sessions(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let sessions = state.ssh_sessions.lock().unwrap();
+    let active_sessions: Vec<String> = sessions
+        .iter()
+        .filter(|(_, session)| session.is_connected)
+        .map(|(id, _)| id.clone())
+        .collect();
+    Ok(active_sessions)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -141,9 +227,11 @@ pub fn run() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             connect_ssh,
-            send_command, 
+            send_command,
             read_output,
-            disconnect_ssh
+            check_connection,
+            disconnect_ssh,
+            get_active_sessions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
