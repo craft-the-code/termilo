@@ -29,15 +29,12 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
                 terminal.current.write(output as string);
             }
         } catch (error) {
-            // Only disconnect on persistent errors, not temporary throttling
             console.warn('Read error (non-fatal):', error);
-            // Don't immediately disconnect - let connection persist
         }
     }, [sessionId, session?.isConnected]);
 
     const startPolling = useCallback(() => {
         if (readIntervalRef.current) return;
-        // Increase interval to reduce server load during fast typing
         readIntervalRef.current = setInterval(readOutput, 150);
     }, [readOutput]);
 
@@ -93,7 +90,6 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
     useEffect(() => {
         const handleVisibilityChange = () => {
             isActiveRef.current = !document.hidden;
-
             if (document.hidden) {
                 stopPolling();
             } else if (session?.isConnected) {
@@ -105,7 +101,7 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [session?.isConnected, startPolling, stopPolling]);
 
-    // Handle window focus/blur for additional safety
+    // Handle window focus/blur
     useEffect(() => {
         const handleFocus = () => {
             isActiveRef.current = true;
@@ -140,11 +136,10 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Initialize terminal and connection
+    // Initialize terminal and fit addon once
     useEffect(() => {
-        if (!terminalRef.current || !session || !profile) return;
+        if (!terminalRef.current) return;
 
-        // Initialize terminal only once
         if (!terminal.current) {
             terminal.current = new Terminal({
                 cursorBlink: true,
@@ -157,37 +152,46 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
                     selectionBackground: '#ffffff40',
                 },
             });
-
-            terminal.current.open(terminalRef.current);
-
-            // Fit terminal to container size
             const fitAddon = new FitAddon();
             fitAddonRef.current = fitAddon;
             terminal.current.loadAddon(fitAddon);
+            terminal.current.open(terminalRef.current);
             fitAddon.fit();
-
-            // Focus terminal immediately after opening
             terminal.current.focus();
-
-            // Handle terminal input
-            terminal.current.onData((data) => {
-                if (session.isConnected) {
-                    invoke('send_command', { sessionId, command: data }).catch(console.error);
-                }
-            });
         }
+    }, []);
 
-        // Connect if not already connected
+    // Handle terminal input based on connection status
+    useEffect(() => {
+        if (!terminal.current) return;
+
+        const onDataDisposable = terminal.current.onData((data) => {
+            if (session?.isConnected) {
+                invoke('send_command', { sessionId, command: data }).catch(console.error);
+            }
+        });
+
+        return () => {
+            onDataDisposable.dispose();
+        };
+    }, [session?.isConnected, sessionId]);
+
+    // Manage connection and polling
+    useEffect(() => {
+        if (!session || !profile) return;
+
         if (!session.isConnected && !session.isConnecting) {
             connectToSSH();
-        } else if (session.isConnected && isActiveRef.current) {
-            startPolling();
+        } else if (session.isConnected) {
+            if (isActiveRef.current) {
+                startPolling();
+            }
         }
 
         return () => {
             stopPolling();
         };
-    }, [sessionId, session?.isConnected, session?.isConnecting, connectToSSH, startPolling, stopPolling]);
+    }, [session, profile, sessionId, connectToSSH, startPolling, stopPolling]);
 
     // Cleanup on unmount
     useEffect(() => {
