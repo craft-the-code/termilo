@@ -1,45 +1,57 @@
 import { useState } from 'react';
-import { useStore } from './store/useStore';
-import ProfileSidebar from './components/ProfileSidebar';
-import TerminalTabs from './components/TerminalTabs';
-import TerminalView from './components/TerminalView';
-import AddProfileModal from './components/AddProfileModal';
+import { useTheme } from './hooks/useTheme';
+import Navigation from './components/Navigation';
+import SettingsPanel from './components/SettingsPanel';
+import TerminalView from './components/terminal/TerminalView';
+import TodoView from './components/todo/TodoView';
+import AutomationView from './components/automation/AutomationView';
 import './App.css';
 
+type ActiveView = 'ssh' | 'todo' | 'automation';
+
 function App() {
-    const [showAddProfile, setShowAddProfile] = useState(false);
-    const { sessions, activeSessionId } = useStore();
+    const [showSettings, setShowSettings] = useState(false);
+    const [activeView, setActiveView] = useState<ActiveView>('ssh');
+    const { currentTheme } = useTheme();
+
+    const renderMainContent = () => {
+        switch (activeView) {
+            case 'ssh':
+                return <TerminalView />;
+            case 'todo':
+                return <TodoView />;
+            case 'automation':
+                return <AutomationView />;
+            default:
+                return null;
+        }
+    };
 
     return (
-        <div className="h-screen flex">
-            {/* Sidebar */}
-            <div className="w-64 bg-gray-900 text-white">
-                <ProfileSidebar onAddProfile={() => setShowAddProfile(true)} />
+        <div className="h-screen flex bg-termilo-terminal">
+            {/* Navigation */}
+            <div className="w-16 bg-termilo-sidebar border-r border-termilo-border">
+                <Navigation activeView={activeView} onViewChange={setActiveView} />
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col">
-                {/* Tabs */}
-                <div className="bg-gray-100 border-b">
-                    <TerminalTabs />
-                </div>
+            <div className="flex-1 flex flex-col bg-slate-100 relative">
+                {renderMainContent()}
 
-                {/* Terminal Area */}
-                <div className="flex-1">
-                    {activeSessionId && activeSessionId.trim() ? (
-                        <TerminalView sessionId={activeSessionId} />
-                    ) : (
-                        <div className="h-full flex items-center justify-center text-gray-500">
-                            Select a server to connect
-                        </div>
-                    )}
-                </div>
+                {/* Settings Button */}
+                <button
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="absolute top-4 right-4 p-2 bg-termilo-sidebar text-termilo-secondary hover:text-termilo-primary border border-termilo-border rounded-lg transition-colors duration-200 z-10"
+                    title="Settings"
+                >
+                    ⚙️
+                </button>
+
+                {/* Settings Panel */}
+                {showSettings && (
+                    <SettingsPanel onClose={() => setShowSettings(false)} />
+                )}
             </div>
-
-            {/* Add Profile Modal */}
-            {showAddProfile && (
-                <AddProfileModal onClose={() => setShowAddProfile(false)} />
-            )}
         </div>
     );
 }

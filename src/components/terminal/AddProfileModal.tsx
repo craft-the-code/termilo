@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore } from '../store/useStore';
+import { useStore } from '../../store/useStore';
 
 interface AddProfileModalProps {
     onClose: () => void;
@@ -49,31 +49,31 @@ export default function AddProfileModal({ onClose }: AddProfileModalProps) {
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-96 max-w-full">
-                <h3 className="text-lg font-semibold mb-4">Add SSH Server</h3>
+                <h3 className="text-lg font-semibold mb-4 text-termilo-dark">Add SSH Server</h3>
 
                 <form onSubmit={handleSubmit}>
                     {/* Name */}
                     <div className="mb-4">
-                        <label className="block text-sm font-medium mb-1">Name *</label>
+                        <label className="block text-sm font-medium mb-1 text-termilo-dark">Name *</label>
                         <input
                             type="text"
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded"
+                            className="w-full px-3 py-2 border border-termilo-border rounded"
                             placeholder="Production Server"
                         />
                     </div>
 
                     {/* Host */}
                     <div className="mb-4">
-                        <label className="block text-sm font-medium mb-1">Host *</label>
+                        <label className="block text-sm font-medium mb-1 text-termilo-dark">Host *</label>
                         <input
                             type="text"
                             value={formData.host}
                             onChange={(e) => setFormData({ ...formData, host: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded"
+                            className="w-full px-3 py-2 border border-termilo-border rounded"
                             placeholder="192.168.1.100"
                         />
                     </div>
@@ -81,21 +81,21 @@ export default function AddProfileModal({ onClose }: AddProfileModalProps) {
                     {/* Port & Username */}
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
-                            <label className="block text-sm font-medium mb-1">Port</label>
+                            <label className="block text-sm font-medium mb-1 text-termilo-dark">Port</label>
                             <input
                                 type="number"
                                 value={formData.port}
                                 onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 22 })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded"
+                                className="w-full px-3 py-2 border border-termilo-border rounded"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium mb-1">Username *</label>
+                            <label className="block text-sm font-medium mb-1 text-termilo-dark">Username *</label>
                             <input
                                 type="text"
                                 value={formData.username}
                                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded"
+                                className="w-full px-3 py-2 border border-termilo-border rounded"
                                 placeholder="root"
                             />
                         </div>
@@ -103,11 +103,11 @@ export default function AddProfileModal({ onClose }: AddProfileModalProps) {
 
                     {/* Auth Method */}
                     <div className="mb-4">
-                        <label className="block text-sm font-medium mb-1">Authentication</label>
+                        <label className="block text-sm font-medium mb-1 text-termilo-dark">Authentication</label>
                         <select
                             value={formData.authMethod}
                             onChange={(e) => setFormData({ ...formData, authMethod: e.target.value as 'password' | 'key' })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded"
+                            className="w-full px-3 py-2 border border-termilo-border rounded"
                         >
                             <option value="password">Password</option>
                             <option value="key">SSH Key</option>
@@ -117,22 +117,22 @@ export default function AddProfileModal({ onClose }: AddProfileModalProps) {
                     {/* Password or Key Path */}
                     {formData.authMethod === 'password' ? (
                         <div className="mb-4">
-                            <label className="block text-sm font-medium mb-1">Password *</label>
+                            <label className="block text-sm font-medium mb-1 text-termilo-dark">Password *</label>
                             <input
                                 type="password"
                                 value={formData.password}
                                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded"
+                                className="w-full px-3 py-2 border border-termilo-border rounded"
                             />
                         </div>
                     ) : (
                         <div className="mb-4">
-                            <label className="block text-sm font-medium mb-1">Private Key Path *</label>
+                            <label className="block text-sm font-medium mb-1 text-termilo-dark">Private Key Path *</label>
                             <input
                                 type="text"
                                 value={formData.keyPath}
                                 onChange={(e) => setFormData({ ...formData, keyPath: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded"
+                                className="w-full px-3 py-2 border border-termilo-border rounded"
                                 placeholder="/home/user/.ssh/id_rsa"
                             />
                         </div>
@@ -143,13 +143,13 @@ export default function AddProfileModal({ onClose }: AddProfileModalProps) {
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                            className="px-4 py-2 text-termilo-muted hover:text-termilo-dark"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            className="px-4 py-2 bg-termilo-primary text-white rounded hover:bg-termilo-primary"
                         >
                             Add Server
                         </button>

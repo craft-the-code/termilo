@@ -3,14 +3,14 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { useStore } from '../store/useStore';
+import { useStore } from '../../store/useStore';
 import '@xterm/xterm/css/xterm.css';
 
-interface TerminalViewProps {
+interface TerminalPanelProps {
     sessionId: string;
 }
 
-export default function TerminalView({ sessionId }: TerminalViewProps) {
+export default function TerminalPanel({ sessionId }: TerminalPanelProps) {
     const terminalRef = useRef<HTMLDivElement>(null);
     const terminal = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
@@ -163,10 +163,10 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
             fontSize: 14,
             fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
             theme: {
-                background: '#1a1a1a',
-                foreground: '#ffffff',
-                cursor: '#ffffff',
-                selectionBackground: '#ffffff40',
+                background: 'var(--termilo-terminal)',
+                foreground: 'var(--termilo-text-primary)',
+                cursor: 'var(--termilo-primary)',
+                selectionBackground: 'var(--termilo-primary)',
             },
         });
 
@@ -186,7 +186,9 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
                 }
             }
         }, 100);
-    }, []);
+    }, [sessionId]);
+
+    // Handle keyboard input
     useEffect(() => {
         if (!terminal.current) return;
 
@@ -253,7 +255,7 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
     }, []); // Empty dependency array - only on unmount
 
     return (
-        <div className="h-full bg-black relative">
+        <div className="h-full bg-termilo-terminal relative">
             {session?.isConnecting && (
                 <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white z-10">
                     <div className="text-center">
@@ -264,7 +266,7 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
             )}
             <div
                 ref={terminalRef}
-                className="h-full w-full p-2"
+                className="h-full w-full p-2 terminal-container"
                 onClick={() => {
                     if (terminal.current) {
                         terminal.current.focus();
