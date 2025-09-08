@@ -5,9 +5,10 @@ import SettingsPanel from './components/SettingsPanel';
 import TerminalView from './components/terminal/TerminalView';
 import TodoView from './components/todo/TodoView';
 import AutomationView from './components/automation/AutomationView';
+import InfoView from './components/info/InfoView';
 import './App.css';
 
-type ActiveView = 'ssh' | 'todo' | 'automation';
+type ActiveView = 'ssh' | 'todo' | 'automation' | 'info';
 
 function App() {
     const [showSettings, setShowSettings] = useState(false);
@@ -22,6 +23,8 @@ function App() {
                 return <TodoView />;
             case 'automation':
                 return <AutomationView />;
+            case 'info':
+                return <InfoView />;
             default:
                 return null;
         }
