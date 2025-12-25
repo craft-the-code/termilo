@@ -39,13 +39,14 @@ export function AuthPromptModal({ isOpen, profile, onConfirm, onCancel }: AuthPr
         try {
             // @ts-ignore - Tauri dialog
             const { open } = await import('@tauri-apps/plugin-dialog');
+            const { homeDir, join } = await import('@tauri-apps/api/path');
+            const home = await homeDir();
+            const sshDir = await join(home, '.ssh');
+
             const selected = await open({
+                defaultPath: sshDir,
                 multiple: false,
                 directory: false,
-                filters: [{
-                    name: 'SSH Keys',
-                    extensions: ['pem', 'key', '']
-                }]
             });
 
             if (selected) {
