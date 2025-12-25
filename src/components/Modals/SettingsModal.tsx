@@ -21,7 +21,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-[1200px] h-[750px] bg-background p-0 overflow-hidden gap-0 flex border-border">
+            <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-[1200px] h-[750px] bg-background p-0 overflow-hidden gap-0 flex border-border">
                 {/* Sidebar */}
                 <aside className="w-64 flex-shrink-0 bg-secondary/30 border-r border-border pt-6 pb-4 flex flex-col justify-between">
                     <div className="px-3">
