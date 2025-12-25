@@ -1,7 +1,64 @@
 # SSH Manager Fixes Applied
 
 ## Overview
-Fixed compilation errors in `src-tauri/src/ssh_manager.rs` based on correct ssh2 crate API usage.
+Fixed compilation errors and runtime issues in `src-tauri/src/ssh_manager.rs` based on correct ssh2 crate API usage.
+
+---
+
+## Critical Fixes
+
+### ⚠️ EventEmitter Trait Import
+
+**Error:**
+```
+error: no method named `emit` found for struct `AppHandle`
+```
+
+**Fix:**
+```rust
+use tauri::{Manager, Emitter};  // Added Emitter
+```
+
+**Why:** The `emit()` method comes from the `Emitter` trait in Tauri 2. It must be in scope to use `app_handle.emit()`.
+
+---
+
+### ⚠️ SSH Handshake Blocking Mode (CRITICAL)
+
+**Runtime Error:**
+```
+✗ Connection failed: SSH handshake failed: [Session(-37)] operation would block
+```
+
+**Root Cause:** Setting non-blocking mode BEFORE handshake completes.
+
+**Wrong Code:**
+```rust
+session.set_blocking(false);  // ❌ Set too early!
+session.set_tcp_stream(tcp);
+session.handshake()  // Fails: needs blocking mode
+```
+
+**Correct Code:**
+```rust
+session.set_tcp_stream(tcp);
+session.handshake()  // ✅ Complete in blocking mode
+    .map_err(|e| format!("SSH handshake failed: {}", e))?;
+
+// Authenticate in blocking mode
+session.userauth_password(&username, &password)?;
+
+// ✅ NOW set non-blocking AFTER authentication
+session.set_blocking(false);
+```
+
+**Why:** SSH handshake and authentication are blocking operations that must complete before switching to non-blocking mode. The correct sequence is:
+1. Create session (blocking by default)
+2. Complete handshake in blocking mode
+3. Authenticate in blocking mode
+4. **THEN** set non-blocking for channel I/O
+
+This is the standard ssh2 crate usage pattern.
 
 ---
 
@@ -25,7 +82,7 @@ use std::io::{Read, Write};
 
 ---
 
-### 2. ✅ set_blocking() Method Location
+### 2. ✅ set_blocking() Method Location and Timing
 
 **Error:**
 ```
@@ -41,7 +98,7 @@ session.set_blocking(false);  // Set on Session, not Channel
 
 **Why:** In ssh2 crate, blocking mode is controlled at the Session level, not per-Channel. The Session's blocking setting affects all channels created from it.
 
-**Location in code:** Line 79 in `ssh_manager.rs`
+**IMPORTANT TIMING:** As shown in the Critical Fixes section above, `set_blocking(false)` must be called AFTER handshake and authentication complete, not before.
 
 ---
 
