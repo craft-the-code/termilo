@@ -104,10 +104,7 @@ impl SshManager {
             return Err("Authentication failed".to_string());
         }
 
-        // NOW set to non-blocking mode AFTER authentication succeeds
-        session.set_blocking(false);
-
-        // Request PTY and shell
+        // Open channel and configure PTY in BLOCKING mode
         let mut channel = session.channel_session()
             .map_err(|e| format!("Failed to open channel: {}", e))?;
 
@@ -116,6 +113,9 @@ impl SshManager {
 
         channel.shell()
             .map_err(|e| format!("Failed to start shell: {}", e))?;
+
+        // NOW set to non-blocking mode AFTER channel is fully configured
+        session.set_blocking(false);
 
         // Store session
         let ssh_session = SshSession {
