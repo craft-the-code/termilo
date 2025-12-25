@@ -51,10 +51,24 @@ export const useProfileStore = create<ProfileState>()(
                     port: 22,
                     username: 'root',
                     authType: 'password',
+                    password: '', // Will prompt for password
                     type: 'vps',
                     tags: ['DigitalOcean', 'Personal'],
                     lastActive: '5d ago',
                     status: 'online',
+                },
+                {
+                    id: '3',
+                    name: 'Localhost SSH (Testing)',
+                    host: 'localhost',
+                    port: 22,
+                    username: 'user',
+                    authType: 'password',
+                    password: '', // Will prompt - enter your local user password
+                    type: 'local',
+                    tags: ['Local', 'Testing'],
+                    lastActive: 'Never',
+                    status: 'unknown',
                 },
             ],
             addProfile: (newProfile) => set((state) => ({
