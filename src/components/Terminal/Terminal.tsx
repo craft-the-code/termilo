@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { invoke } from '@tauri-apps/api/core';
@@ -24,6 +24,9 @@ export function Terminal({ sessionId }: TerminalProps) {
 
     const [showAuthModal, setShowAuthModal] = useState(false);
     const [, setAuthCredentials] = useState<{ password?: string; keyPath?: string } | null>(null);
+    const [systemThemeIsDark, setSystemThemeIsDark] = useState(() =>
+        window.matchMedia('(prefers-color-scheme: dark)').matches
+    );
 
     const { sessions, updateSession } = useSessionStore();
     const { getProfile, updateProfile } = useProfileStore();
@@ -32,8 +35,23 @@ export function Terminal({ sessionId }: TerminalProps) {
     const session = sessions.find(s => s.id === sessionId);
     const profile = session ? getProfile(session.profileId) : undefined;
 
+    // Listen for system theme changes
+    useEffect(() => {
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = (e: MediaQueryListEvent) => {
+            setSystemThemeIsDark(e.matches);
+        };
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
+    }, []);
+
     // Determine if we should use dark theme
-    const isDarkTheme = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const isDarkTheme = useMemo(() => {
+        if (theme === 'system') {
+            return systemThemeIsDark;
+        }
+        return theme === 'dark';
+    }, [theme, systemThemeIsDark]);
 
     const connectToSSH = useCallback(async (credentials?: { password?: string; keyPath?: string }) => {
         if (!session || !profile || session.isConnected || isConnecting.current) {
@@ -257,6 +275,9 @@ export function Terminal({ sessionId }: TerminalProps) {
     // Update options when settings change
     useEffect(() => {
         if (xtermRef.current) {
+            console.log('[Terminal Settings] Updating:', { fontSize, fontFamily, lineHeight, isDarkTheme });
+
+            // Update font settings
             xtermRef.current.options.fontSize = fontSize;
             xtermRef.current.options.fontFamily = fontFamily;
             xtermRef.current.options.lineHeight = lineHeight;
@@ -274,14 +295,21 @@ export function Terminal({ sessionId }: TerminalProps) {
                 selectionBackground: 'rgba(14, 165, 233, 0.3)',
             };
 
-            // Refresh layout
-            if (fitAddonRef.current) {
-                try {
-                    fitAddonRef.current.fit();
-                } catch (e) {
-                    // ignore
+            // Force terminal to refresh and refit
+            // This ensures the changes are immediately visible
+            xtermRef.current.refresh(0, xtermRef.current.rows - 1);
+
+            // Refresh layout with a small delay to ensure font is loaded
+            setTimeout(() => {
+                if (fitAddonRef.current && xtermRef.current) {
+                    try {
+                        fitAddonRef.current.fit();
+                        console.log('[Terminal Settings] Applied successfully');
+                    } catch (e) {
+                        console.warn('[Terminal Settings] Fit error:', e);
+                    }
                 }
-            }
+            }, 50);
         }
     }, [fontSize, fontFamily, lineHeight, isDarkTheme]);
 

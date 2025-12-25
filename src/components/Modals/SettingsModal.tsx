@@ -21,7 +21,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-[1000px] h-[700px] bg-background p-0 overflow-hidden gap-0 flex border-border">
+            <DialogContent className="max-w-[1200px] h-[750px] bg-background p-0 overflow-hidden gap-0 flex border-border">
                 {/* Sidebar */}
                 <aside className="w-64 flex-shrink-0 bg-secondary/30 border-r border-border pt-6 pb-4 flex flex-col justify-between">
                     <div className="px-3">
@@ -93,16 +93,24 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                                 <h3 className="font-semibold text-lg">Typography</h3>
 
                                 <div className="space-y-3">
-                                    <label className="text-sm font-medium">Font Family</label>
+                                    <label className="text-sm font-medium text-foreground">Font Family</label>
                                     <select
-                                        className="w-full h-11 rounded-lg border border-input bg-card px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        className="w-full h-11 rounded-lg border-2 border-input bg-background text-foreground px-3 py-2 text-sm font-medium ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary transition-colors cursor-pointer hover:border-primary/50"
                                         value={fontFamily}
                                         onChange={(e) => setFontFamily(e.target.value)}
+                                        style={{
+                                            appearance: 'none',
+                                            backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                                            backgroundRepeat: 'no-repeat',
+                                            backgroundPosition: 'right 0.5rem center',
+                                            backgroundSize: '1.5em 1.5em',
+                                            paddingRight: '2.5rem'
+                                        }}
                                     >
-                                        <option value="JetBrains Mono">JetBrains Mono</option>
-                                        <option value="Fira Code">Fira Code</option>
-                                        <option value="Source Code Pro">Source Code Pro</option>
-                                        <option value="monospace">System Monospace</option>
+                                        <option value="JetBrains Mono" className="bg-background text-foreground">JetBrains Mono</option>
+                                        <option value="Fira Code" className="bg-background text-foreground">Fira Code</option>
+                                        <option value="Source Code Pro" className="bg-background text-foreground">Source Code Pro</option>
+                                        <option value="monospace" className="bg-background text-foreground">System Monospace</option>
                                     </select>
                                     <p className="text-xs text-muted-foreground">
                                         Note: Only fonts installed on your system will work correctly.
