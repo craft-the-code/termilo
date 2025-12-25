@@ -1,7 +1,5 @@
-import { useRef, useEffect } from 'react';
 import { useSessionStore } from '@/store/sessionStore';
 import { Terminal } from '@/components/Terminal/Terminal';
-import { Button } from '@/components/ui/button';
 import { useProfileStore } from '@/store/profileStore';
 
 export function TerminalPage() {

@@ -22,7 +22,7 @@ export function Terminal({ sessionId }: TerminalProps) {
     const keyboardHandlerRef = useRef<any>(null);
 
     const [showAuthModal, setShowAuthModal] = useState(false);
-    const [authCredentials, setAuthCredentials] = useState<{ password?: string; keyPath?: string } | null>(null);
+    const [, setAuthCredentials] = useState<{ password?: string; keyPath?: string } | null>(null);
 
     const { sessions, updateSession } = useSessionStore();
     const { getProfile } = useProfileStore();
