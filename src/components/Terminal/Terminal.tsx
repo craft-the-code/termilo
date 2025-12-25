@@ -27,10 +27,13 @@ export function Terminal({ sessionId }: TerminalProps) {
 
     const { sessions, updateSession } = useSessionStore();
     const { getProfile, updateProfile } = useProfileStore();
-    const { fontSize, fontFamily, lineHeight } = useUIStore();
+    const { fontSize, fontFamily, lineHeight, theme } = useUIStore();
 
     const session = sessions.find(s => s.id === sessionId);
     const profile = session ? getProfile(session.profileId) : undefined;
+
+    // Determine if we should use dark theme
+    const isDarkTheme = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
     const connectToSSH = useCallback(async (credentials?: { password?: string; keyPath?: string }) => {
         if (!session || !profile || session.isConnected || isConnecting.current) {
@@ -214,11 +217,16 @@ export function Terminal({ sessionId }: TerminalProps) {
             fontSize: fontSize,
             fontFamily: fontFamily,
             lineHeight: lineHeight,
-            theme: {
+            theme: isDarkTheme ? {
                 background: '#0F172A', // slate-900
                 foreground: '#E2E8F0', // slate-200
                 cursor: '#0EA5E9',     // sky-500
                 selectionBackground: 'rgba(14, 165, 233, 0.4)',
+            } : {
+                background: '#FFFFFF', // white
+                foreground: '#0F172A', // slate-900
+                cursor: '#0EA5E9',     // sky-500
+                selectionBackground: 'rgba(14, 165, 233, 0.3)',
             },
             allowProposedApi: true,
         });
@@ -253,6 +261,19 @@ export function Terminal({ sessionId }: TerminalProps) {
             xtermRef.current.options.fontFamily = fontFamily;
             xtermRef.current.options.lineHeight = lineHeight;
 
+            // Update theme colors
+            xtermRef.current.options.theme = isDarkTheme ? {
+                background: '#0F172A',
+                foreground: '#E2E8F0',
+                cursor: '#0EA5E9',
+                selectionBackground: 'rgba(14, 165, 233, 0.4)',
+            } : {
+                background: '#FFFFFF',
+                foreground: '#0F172A',
+                cursor: '#0EA5E9',
+                selectionBackground: 'rgba(14, 165, 233, 0.3)',
+            };
+
             // Refresh layout
             if (fitAddonRef.current) {
                 try {
@@ -262,7 +283,7 @@ export function Terminal({ sessionId }: TerminalProps) {
                 }
             }
         }
-    }, [fontSize, fontFamily, lineHeight]);
+    }, [fontSize, fontFamily, lineHeight, isDarkTheme]);
 
     // Handle keyboard input
     useEffect(() => {
@@ -350,7 +371,7 @@ export function Terminal({ sessionId }: TerminalProps) {
     };
 
     return (
-        <div className="h-full w-full bg-slate-900 relative overflow-hidden">
+        <div className={`h-full w-full relative overflow-hidden ${isDarkTheme ? 'bg-slate-900' : 'bg-white'}`}>
             {session?.isConnecting && (
                 <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white z-10">
                     <div className="text-center">
