@@ -1,30 +1,27 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { Terminal as XTerm } from '@xterm/xterm';
+import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { useSessionStore } from '@/store/sessionStore';
-import { useProfileStore } from '@/store/profileStore';
+import { useStore } from '../../store/useStore';
 import '@xterm/xterm/css/xterm.css';
 
-interface TerminalProps {
+interface TerminalPanelProps {
     sessionId: string;
 }
 
-export function Terminal({ sessionId }: TerminalProps) {
+export default function TerminalPanel({ sessionId }: TerminalPanelProps) {
     const terminalRef = useRef<HTMLDivElement>(null);
-    const xtermRef = useRef<XTerm | null>(null);
+    const terminal = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
     const isInitialized = useRef(false);
     const isConnecting = useRef(false);
     const streamStarted = useRef(false);
     const keyboardHandlerRef = useRef<any>(null);
-
-    const { sessions, updateSession } = useSessionStore();
-    const { getProfile } = useProfileStore();
+    const { sessions, profiles, updateSession } = useStore();
 
     const session = sessions.find(s => s.id === sessionId);
-    const profile = session ? getProfile(session.profileId) : undefined;
+    const profile = profiles.find(p => p.id === session?.profileId);
 
     const connectToSSH = useCallback(async () => {
         if (!session || !profile || session.isConnected || isConnecting.current) {
@@ -32,7 +29,7 @@ export function Terminal({ sessionId }: TerminalProps) {
         }
 
         isConnecting.current = true;
-        updateSession(sessionId, { isConnecting: true, status: 'connecting' });
+        updateSession(sessionId, { isConnecting: true });
 
         try {
             const result = await invoke('connect_ssh', {
@@ -42,7 +39,7 @@ export function Terminal({ sessionId }: TerminalProps) {
                     host: profile.host,
                     port: profile.port,
                     username: profile.username,
-                    auth_method: profile.authType,
+                    auth_method: profile.authMethod,
                     password: profile.password,
                     key_path: profile.keyPath,
                 },
@@ -51,14 +48,13 @@ export function Terminal({ sessionId }: TerminalProps) {
 
             console.log('Connection result:', result);
 
-            if (xtermRef.current) {
-                xtermRef.current.writeln(`\x1b[1;32m✓ Connected to ${profile.name}\x1b[0m`);
+            if (terminal.current) {
+                terminal.current.writeln(`Connected to ${profile.name}`);
             }
 
             updateSession(sessionId, {
                 isConnected: true,
-                isConnecting: false,
-                status: 'connected'
+                isConnecting: false
             });
 
             // Start reading output stream with a small delay
@@ -76,19 +72,18 @@ export function Terminal({ sessionId }: TerminalProps) {
             }, 500);
 
             // Focus terminal after successful connection
-            if (xtermRef.current) {
-                xtermRef.current.focus();
+            if (terminal.current) {
+                terminal.current.focus();
             }
         } catch (error) {
             console.error('Connection error:', error);
             updateSession(sessionId, {
                 isConnected: false,
-                isConnecting: false,
-                status: 'disconnected'
+                isConnecting: false
             });
 
-            if (xtermRef.current) {
-                xtermRef.current.writeln(`\x1b[1;31m✗ Connection failed: ${error}\x1b[0m`);
+            if (terminal.current) {
+                terminal.current.writeln(`Connection failed: ${error}`);
             }
         } finally {
             isConnecting.current = false;
@@ -102,39 +97,31 @@ export function Terminal({ sessionId }: TerminalProps) {
         let errorUnlisten: (() => void) | null = null;
 
         const setupListeners = async () => {
-            // Optimized output handling - expect structured events from backend
+            // Optimized output handling - expect structured events from new backend
             outputUnlisten = await listen<{ session_id: string; data: string }>('ssh-output', (event) => {
                 if (event.payload.session_id === sessionId) {
-                    if (xtermRef.current) {
+                    if (terminal.current) {
                         // Direct write for maximum performance
-                        xtermRef.current.write(event.payload.data);
+                        terminal.current.write(event.payload.data);
                     }
                 }
             });
 
             closedUnlisten = await listen<{ session_id: string; message?: string }>('ssh-output-closed', (event) => {
                 if (event.payload.session_id === sessionId) {
-                    updateSession(sessionId, {
-                        isConnected: false,
-                        isConnecting: false,
-                        status: 'disconnected'
-                    });
-                    if (xtermRef.current) {
-                        xtermRef.current.writeln('\r\n\x1b[31mConnection closed\x1b[0m');
+                    updateSession(sessionId, { isConnected: false, isConnecting: false });
+                    if (terminal.current) {
+                        terminal.current.writeln('\r\n\x1b[31mConnection closed\x1b[0m');
                     }
                 }
             });
 
             errorUnlisten = await listen<{ session_id: string; error: string }>('ssh-output-error', (event) => {
                 if (event.payload.session_id === sessionId) {
-                    if (xtermRef.current) {
-                        xtermRef.current.writeln(`\r\n\x1b[31mError: ${event.payload.error}\x1b[0m`);
+                    if (terminal.current) {
+                        terminal.current.writeln(`\r\n\x1b[31mError: ${event.payload.error}\x1b[0m`);
                     }
-                    updateSession(sessionId, {
-                        isConnected: false,
-                        isConnecting: false,
-                        status: 'disconnected'
-                    });
+                    updateSession(sessionId, { isConnected: false, isConnecting: false });
                 }
             });
         };
@@ -151,21 +138,9 @@ export function Terminal({ sessionId }: TerminalProps) {
     // Handle window resize
     useEffect(() => {
         const handleResize = () => {
-            if (xtermRef.current && fitAddonRef.current) {
+            if (terminal.current && fitAddonRef.current) {
                 try {
                     fitAddonRef.current.fit();
-
-                    // Send resize to backend if connected
-                    if (session?.isConnected) {
-                        const dims = fitAddonRef.current.proposeDimensions();
-                        if (dims) {
-                            invoke('resize_terminal', {
-                                sessionId,
-                                cols: dims.cols,
-                                rows: dims.rows,
-                            }).catch(console.error);
-                        }
-                    }
                 } catch (error) {
                     console.warn('Resize error:', error);
                 }
@@ -174,54 +149,48 @@ export function Terminal({ sessionId }: TerminalProps) {
 
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [sessionId, session?.isConnected]);
+    }, []);
 
     // Initialize terminal - prevent double initialization
     useEffect(() => {
-        if (!terminalRef.current || xtermRef.current || isInitialized.current) return;
+        if (!terminalRef.current || terminal.current || isInitialized.current) return;
 
         console.log('Initializing terminal for session:', sessionId);
         isInitialized.current = true;
 
-        const term = new XTerm({
+        terminal.current = new Terminal({
             cursorBlink: true,
             fontSize: 14,
-            fontFamily: 'JetBrains Mono, Monaco, Menlo, "Ubuntu Mono", monospace',
+            fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
             theme: {
-                background: '#0F172A', // slate-900
-                foreground: '#E2E8F0', // slate-200
-                cursor: '#0EA5E9',     // sky-500
-                selectionBackground: 'rgba(14, 165, 233, 0.4)',
+                background: 'var(--termilo-terminal)',
+                foreground: 'var(--termilo-text-primary)',
+                cursor: 'var(--termilo-primary)',
+                selectionBackground: 'var(--termilo-primary)',
             },
-            allowProposedApi: true,
         });
 
         const fitAddon = new FitAddon();
         fitAddonRef.current = fitAddon;
-        term.loadAddon(fitAddon);
-        term.open(terminalRef.current);
+        terminal.current.loadAddon(fitAddon);
+        terminal.current.open(terminalRef.current);
 
         // Small delay before fitting to ensure DOM is ready
         setTimeout(() => {
-            if (fitAddon && term) {
+            if (fitAddon && terminal.current) {
                 try {
                     fitAddon.fit();
-                    term.focus();
+                    terminal.current.focus();
                 } catch (error) {
                     console.warn('Initial fit error:', error);
                 }
             }
         }, 100);
-
-        xtermRef.current = term;
-
-        term.writeln('\x1b[1;34mWelcome to Termilo\x1b[0m');
-        term.writeln('Initializing connection...');
     }, [sessionId]);
 
     // Handle keyboard input
     useEffect(() => {
-        if (!xtermRef.current) return;
+        if (!terminal.current) return;
 
         // Remove existing handler if any
         if (keyboardHandlerRef.current) {
@@ -229,9 +198,9 @@ export function Terminal({ sessionId }: TerminalProps) {
             keyboardHandlerRef.current = null;
         }
 
-        console.log('Binding keyboard for session:', sessionId);
+        console.log('binding keyboard');
         // Add new handler
-        keyboardHandlerRef.current = xtermRef.current.onData((data) => {
+        keyboardHandlerRef.current = terminal.current.onData((data) => {
             if (session?.isConnected) {
                 invoke('send_command', { sessionId, command: data }).catch(console.error);
             }
@@ -247,7 +216,7 @@ export function Terminal({ sessionId }: TerminalProps) {
 
     // Auto-connect - only once when ready
     useEffect(() => {
-        if (!session || !profile || !xtermRef.current) return;
+        if (!session || !profile || !terminal.current) return;
         if (session.isConnected || session.isConnecting) return;
 
         // Add a small delay to prevent multiple rapid connections
@@ -268,11 +237,11 @@ export function Terminal({ sessionId }: TerminalProps) {
                 invoke('disconnect_ssh', { sessionId }).catch(console.error);
             }
 
-            if (xtermRef.current) {
-                xtermRef.current.dispose();
+            if (terminal.current) {
+                terminal.current.dispose();
             }
 
-            xtermRef.current = null;
+            terminal.current = null;
             fitAddonRef.current = null;
             isInitialized.current = false;
             isConnecting.current = false;
@@ -286,21 +255,21 @@ export function Terminal({ sessionId }: TerminalProps) {
     }, []); // Empty dependency array - only on unmount
 
     return (
-        <div className="h-full w-full bg-slate-900 relative overflow-hidden">
+        <div className="h-full bg-termilo-terminal relative">
             {session?.isConnecting && (
                 <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white z-10">
                     <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500 mx-auto mb-2"></div>
-                        <div className="text-sm">Connecting to {profile?.name}...</div>
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+                        <div>Connecting to {profile?.name}...</div>
                     </div>
                 </div>
             )}
             <div
                 ref={terminalRef}
-                className="h-full w-full p-1"
+                className="h-full w-full p-2 terminal-container"
                 onClick={() => {
-                    if (xtermRef.current) {
-                        xtermRef.current.focus();
+                    if (terminal.current) {
+                        terminal.current.focus();
                     }
                 }}
             />

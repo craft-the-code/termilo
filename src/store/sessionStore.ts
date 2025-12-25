@@ -7,6 +7,8 @@ export interface Session {
     title: string;
     status: 'connecting' | 'connected' | 'disconnected';
     timestamp: number;
+    isConnected: boolean;
+    isConnecting: boolean;
 }
 
 interface SessionState {
@@ -16,6 +18,7 @@ interface SessionState {
     addSession: (profileId: string, title: string) => void;
     removeSession: (id: string) => void;
     setActiveSession: (id: string | null) => void;
+    updateSession: (id: string, updates: Partial<Session>) => void;
 
     // Actions using current state
     connect: (profileId: string, title: string) => void;
@@ -33,6 +36,8 @@ export const useSessionStore = create<SessionState>((set) => ({
             title,
             status: 'connecting',
             timestamp: Date.now(),
+            isConnected: false,
+            isConnecting: false,
         };
         return {
             sessions: [...state.sessions, newSession],
@@ -55,6 +60,10 @@ export const useSessionStore = create<SessionState>((set) => ({
 
     setActiveSession: (id) => set({ activeSessionId: id }),
 
+    updateSession: (id, updates) => set((state) => ({
+        sessions: state.sessions.map(s => s.id === id ? { ...s, ...updates } : s)
+    })),
+
     connect: (profileId, title) => {
         // Alias for addSession for semantics
         return set((state) => {
@@ -64,6 +73,8 @@ export const useSessionStore = create<SessionState>((set) => ({
                 title,
                 status: 'connecting',
                 timestamp: Date.now(),
+                isConnected: false,
+                isConnecting: false,
             };
             return {
                 sessions: [...state.sessions, newSession],

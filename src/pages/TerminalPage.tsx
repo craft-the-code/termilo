@@ -62,9 +62,7 @@ export function TerminalPage() {
                         className={`absolute inset-0 z-0 ${session.id === activeSessionId ? 'visible z-10' : 'invisible'}`}
                     >
                         <Terminal
-                            key={session.id} // Re-mount if needed, or keep mounted? Keep mounted for state.
-                            // Pass generic handlers for now
-                            onData={(data) => console.log(`[${session.title}] input:`, data)}
+                            sessionId={session.id}
                         />
                     </div>
                 ))}

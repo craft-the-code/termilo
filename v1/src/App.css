@@ -1,0 +1,254 @@
+@import "tailwindcss";
+
+/* Keep original Vite/React logos */
+.logo.vite:hover {
+    filter: drop-shadow(0 0 2em #747bff);
+}
+
+.logo.react:hover {
+    filter: drop-shadow(0 0 2em #61dafb);
+}
+
+/* Theme System - Default Theme */
+:root {
+    /* Fonts */
+    font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 400;
+
+    /* Original Vite styles */
+    color: #0f0f0f;
+    background-color: #f6f6f6;
+
+    /* Typography optimizations */
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+
+    /* Termilo Theme Variables - Default (Soft) */
+    --termilo-primary-50: #f0f9ff;
+    --termilo-primary-100: #e0f2fe;
+    --termilo-primary-400: #7dd3fc;
+    --termilo-primary-500: #38bdf8;
+    --termilo-primary-600: #0ea5e9;
+    --termilo-primary-700: #0284c7;
+    --termilo-primary-900: #0c4a6e;
+
+    --termilo-cyan: #22d3ee;
+    --termilo-teal: #2dd4bf;
+    --termilo-amber: #fbbf24;
+    --termilo-violet: #a78bfa;
+
+    --termilo-terminal: #1e293b;
+    --termilo-sidebar: #334155;
+    --termilo-border: #475569;
+    --termilo-card: #f1f5f9;
+
+    --termilo-success: #34d399;
+    --termilo-error: #f87171;
+    --termilo-warning: #fbbf24;
+    --termilo-connecting: #a78bfa;
+
+    --termilo-text-primary: #e2e8f0;
+    --termilo-text-secondary: #94a3b8;
+    --termilo-text-muted: #64748b;
+    --termilo-text-dark: #334155;
+    --termilo-text-accent: #38bdf8;
+}
+
+/* Dark Theme */
+:root[data-theme="dark"] {
+    --termilo-primary-400: #0ea5e9;
+    --termilo-primary-500: #0284c7;
+    --termilo-primary-600: #0369a1;
+    --termilo-primary-700: #075985;
+
+    --termilo-cyan: #06b6d4;
+    --termilo-teal: #14b8a6;
+    --termilo-amber: #f59e0b;
+    --termilo-violet: #8b5cf6;
+
+    --termilo-terminal: #0f172a;
+    --termilo-sidebar: #1e293b;
+    --termilo-border: #334155;
+    --termilo-card: #1e293b;
+
+    --termilo-success: #10b981;
+    --termilo-error: #ef4444;
+    --termilo-warning: #f59e0b;
+    --termilo-connecting: #8b5cf6;
+
+    --termilo-text-primary: #f8fafc;
+    --termilo-text-secondary: #94a3b8;
+    --termilo-text-muted: #64748b;
+    --termilo-text-dark: #1e293b;
+    --termilo-text-accent: #0284c7;
+}
+
+/* Ocean Theme */
+:root[data-theme="ocean"] {
+    --termilo-primary-400: #22d3ee;
+    --termilo-primary-500: #06b6d4;
+    --termilo-primary-600: #0891b2;
+    --termilo-primary-700: #0e7490;
+
+    --termilo-cyan: #67e8f9;
+    --termilo-teal: #5eead4;
+    --termilo-amber: #fcd34d;
+    --termilo-violet: #a5b4fc;
+
+    --termilo-terminal: #0f172a;
+    --termilo-sidebar: #1e293b;
+    --termilo-border: #334155;
+    --termilo-card: #f0fdfa;
+
+    --termilo-success: #6ee7b7;
+    --termilo-error: #fca5a5;
+    --termilo-warning: #fcd34d;
+    --termilo-connecting: #a5b4fc;
+
+    --termilo-text-primary: #f0fdfa;
+    --termilo-text-secondary: #94a3b8;
+    --termilo-text-muted: #64748b;
+    --termilo-text-dark: #134e4a;
+    --termilo-text-accent: #06b6d4;
+}
+
+/* Component styles using CSS variables */
+a {
+    font-weight: 500;
+    color: var(--termilo-text-accent);
+    text-decoration: inherit;
+    transition: color 0.25s ease;
+}
+
+a:hover {
+    color: var(--termilo-primary-600);
+}
+
+h1 {
+    text-align: center;
+}
+
+input,
+button {
+    border-radius: 8px;
+    border: 1px solid transparent;
+    padding: 0.6em 1.2em;
+    font-size: 1em;
+    font-weight: 500;
+    font-family: inherit;
+    color: #0f0f0f;
+    background-color: #ffffff;
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
+    outline: none;
+}
+
+button {
+    cursor: pointer;
+}
+
+button:hover {
+    border-color: var(--termilo-primary-500);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+button:active {
+    border-color: var(--termilo-primary-600);
+    background-color: #e8e8e8;
+    transform: translateY(0);
+}
+
+#greet-input {
+    margin-right: 5px;
+}
+
+/* Terminal and component styles */
+.terminal-container {
+    background-color: var(--termilo-terminal);
+    color: var(--termilo-text-primary);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.terminal-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.terminal-scrollbar::-webkit-scrollbar-track {
+    background: var(--termilo-sidebar);
+}
+
+.terminal-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--termilo-border);
+    border-radius: 4px;
+}
+
+.terminal-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--termilo-text-muted);
+}
+
+.status-connected {
+    background-color: var(--termilo-success);
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.status-connecting {
+    background-color: var(--termilo-connecting);
+    animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.status-disconnected {
+    background-color: var(--termilo-error);
+}
+
+.btn-primary {
+    background-color: var(--termilo-primary-500);
+    color: white;
+    border-color: var(--termilo-primary-500);
+    transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+    background-color: var(--termilo-primary-600);
+    border-color: var(--termilo-primary-600);
+    box-shadow: 0 4px 14px 0 color-mix(in srgb, var(--termilo-primary-500) 25%, transparent);
+}
+
+.btn-secondary {
+    background-color: var(--termilo-teal);
+    color: white;
+    border-color: var(--termilo-teal);
+    transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+    background-color: #14b8a6;
+    border-color: #14b8a6;
+}
+
+/* Utility classes using CSS variables */
+.bg-termilo-primary { background-color: var(--termilo-primary-500); }
+.bg-termilo-terminal { background-color: var(--termilo-terminal); }
+.bg-termilo-sidebar { background-color: var(--termilo-sidebar); }
+.bg-termilo-border { background-color: var(--termilo-border); }
+.bg-termilo-card { background-color: var(--termilo-card); }
+
+.text-termilo-primary { color: var(--termilo-text-primary); }
+.text-termilo-secondary { color: var(--termilo-text-secondary); }
+.text-termilo-muted { color: var(--termilo-text-muted); }
+.text-termilo-dark { color: var(--termilo-text-dark); }
+
+.border-termilo-border { border-color: var(--termilo-border); }
+.border-termilo-primary { border-color: var(--termilo-primary-500); }
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        color: #f6f6f6;
+        background-color: #2f2f2f;
+    }
+}
