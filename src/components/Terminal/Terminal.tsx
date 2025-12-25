@@ -1,10 +1,11 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSessionStore } from '@/store/sessionStore';
 import { useProfileStore } from '@/store/profileStore';
+import { AuthPromptModal } from '@/components/Modals/AuthPromptModal';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalProps {
@@ -20,14 +21,26 @@ export function Terminal({ sessionId }: TerminalProps) {
     const streamStarted = useRef(false);
     const keyboardHandlerRef = useRef<any>(null);
 
+    const [showAuthModal, setShowAuthModal] = useState(false);
+    const [authCredentials, setAuthCredentials] = useState<{ password?: string; keyPath?: string } | null>(null);
+
     const { sessions, updateSession } = useSessionStore();
     const { getProfile } = useProfileStore();
 
     const session = sessions.find(s => s.id === sessionId);
     const profile = session ? getProfile(session.profileId) : undefined;
 
-    const connectToSSH = useCallback(async () => {
+    const connectToSSH = useCallback(async (credentials?: { password?: string; keyPath?: string }) => {
         if (!session || !profile || session.isConnected || isConnecting.current) {
+            return;
+        }
+
+        // Check if we need credentials
+        const needsPassword = profile.authType === 'password' && !profile.password && !credentials?.password;
+        const needsKey = profile.authType === 'key' && !profile.keyPath && !credentials?.keyPath;
+
+        if (needsPassword || needsKey) {
+            setShowAuthModal(true);
             return;
         }
 
@@ -43,8 +56,8 @@ export function Terminal({ sessionId }: TerminalProps) {
                     port: profile.port,
                     username: profile.username,
                     auth_method: profile.authType,
-                    password: profile.password,
-                    key_path: profile.keyPath,
+                    password: credentials?.password || profile.password,
+                    key_path: credentials?.keyPath || profile.keyPath,
                 },
                 sessionId
             });
@@ -285,6 +298,25 @@ export function Terminal({ sessionId }: TerminalProps) {
         };
     }, []); // Empty dependency array - only on unmount
 
+    const handleAuthConfirm = (credentials: { password?: string; keyPath?: string }) => {
+        setShowAuthModal(false);
+        setAuthCredentials(credentials);
+        // Retry connection with credentials
+        connectToSSH(credentials);
+    };
+
+    const handleAuthCancel = () => {
+        setShowAuthModal(false);
+        updateSession(sessionId, {
+            isConnecting: false,
+            isConnected: false,
+            status: 'disconnected'
+        });
+        if (xtermRef.current) {
+            xtermRef.current.writeln('\x1b[1;33mConnection cancelled\x1b[0m');
+        }
+    };
+
     return (
         <div className="h-full w-full bg-slate-900 relative overflow-hidden">
             {session?.isConnecting && (
@@ -303,6 +335,13 @@ export function Terminal({ sessionId }: TerminalProps) {
                         xtermRef.current.focus();
                     }
                 }}
+            />
+
+            <AuthPromptModal
+                isOpen={showAuthModal}
+                profile={profile || null}
+                onConfirm={handleAuthConfirm}
+                onCancel={handleAuthCancel}
             />
         </div>
     );
