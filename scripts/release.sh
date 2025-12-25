@@ -32,7 +32,7 @@ echo ""
 echo -e "${YELLOW}📝 Updating version to $NEW_VERSION...${NC}"
 
 # Update package.json
-npm version "$NEW_VERSION" --no-git-tag-version
+yarn version --new-version "$NEW_VERSION" --no-git-tag-version
 
 # Update Cargo.toml
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -56,7 +56,7 @@ echo ""
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     # Commit changes
-    git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+    git add package.json yarn.lock src-tauri/Cargo.toml src-tauri/Cargo.lock
     git commit -m "chore: bump version to v$NEW_VERSION"
     
     # Create tag
