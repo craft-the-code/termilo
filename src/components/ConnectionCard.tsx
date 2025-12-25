@@ -13,24 +13,21 @@ interface ConnectionCardProps {
 
 export function ConnectionCard({ connection, onEdit, onDelete, onConnect }: ConnectionCardProps) {
     const statusColor = {
-        online: 'bg-green-500',
-        offline: 'bg-gray-500',
+        live: 'bg-green-500',
+        error: 'bg-red-500',
         unknown: 'bg-slate-500',
-        unreachable: 'bg-red-500',
     }[connection.status];
 
     const statusText = {
-        online: 'Online',
-        offline: 'Offline',
+        live: 'Online',
+        error: 'Error',
         unknown: 'Unknown',
-        unreachable: 'Unreachable',
     }[connection.status];
 
     const statusTextColor = {
-        online: 'text-green-500',
-        offline: 'text-muted-foreground',
+        live: 'text-green-500',
+        error: 'text-red-500',
         unknown: 'text-muted-foreground',
-        unreachable: 'text-red-500',
     }[connection.status];
 
     const iconName = {

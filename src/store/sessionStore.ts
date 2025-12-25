@@ -14,10 +14,12 @@ export interface Session {
 interface SessionState {
     sessions: Session[];
     activeSessionId: string | null;
+    currentView: 'dashboard' | 'terminal';
 
     addSession: (profileId: string, title: string) => void;
     removeSession: (id: string) => void;
     setActiveSession: (id: string | null) => void;
+    setView: (view: 'dashboard' | 'terminal') => void;
     updateSession: (id: string, updates: Partial<Session>) => void;
 
     // Actions using current state
@@ -28,6 +30,7 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set) => ({
     sessions: [],
     activeSessionId: null,
+    currentView: 'dashboard',
 
     addSession: (profileId, title) => set((state) => {
         const newSession: Session = {
@@ -42,6 +45,7 @@ export const useSessionStore = create<SessionState>((set) => ({
         return {
             sessions: [...state.sessions, newSession],
             activeSessionId: newSession.id, // Auto-switch to new session
+            currentView: 'terminal',
         };
     }),
 
@@ -58,7 +62,9 @@ export const useSessionStore = create<SessionState>((set) => ({
         };
     }),
 
-    setActiveSession: (id) => set({ activeSessionId: id }),
+    setActiveSession: (id) => set({ activeSessionId: id, currentView: 'terminal' }),
+
+    setView: (view) => set({ currentView: view }),
 
     updateSession: (id, updates) => set((state) => ({
         sessions: state.sessions.map(s => s.id === id ? { ...s, ...updates } : s)
@@ -79,6 +85,7 @@ export const useSessionStore = create<SessionState>((set) => ({
             return {
                 sessions: [...state.sessions, newSession],
                 activeSessionId: newSession.id,
+                currentView: 'terminal',
             };
         });
     },
@@ -89,12 +96,15 @@ export const useSessionStore = create<SessionState>((set) => ({
         set((state) => {
             const remaining = state.sessions.filter(s => s.id !== id);
             let nextActive = state.activeSessionId;
+            // If the closed session was active, switch to another
             if (state.activeSessionId === id) {
                 nextActive = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
             }
             return {
                 sessions: remaining,
                 activeSessionId: nextActive,
+                // If no sessions left, go to dashboard
+                currentView: remaining.length === 0 ? 'dashboard' : state.currentView
             };
         });
     }

@@ -16,12 +16,13 @@ export interface Profile {
     type: ConnectionType;
     tags: string[];
     lastActive?: string;
-    status: 'online' | 'offline' | 'unknown' | 'unreachable';
+    status: 'live' | 'error' | 'unknown';
+    isTemporary?: boolean;
 }
 
 interface ProfileState {
     profiles: Profile[];
-    addProfile: (profile: Omit<Profile, 'id' | 'lastActive' | 'status'>) => void;
+    addProfile: (profile: Omit<Profile, 'id' | 'lastActive' | 'status'> & { id?: string }) => void;
     updateProfile: (id: string, updates: Partial<Profile>) => void;
     deleteProfile: (id: string) => void;
     getProfile: (id: string) => Profile | undefined;
@@ -55,7 +56,7 @@ export const useProfileStore = create<ProfileState>()(
                     type: 'vps',
                     tags: ['DigitalOcean', 'Personal'],
                     lastActive: '5d ago',
-                    status: 'online',
+                    status: 'live',
                 },
                 {
                     id: '3',
@@ -76,7 +77,7 @@ export const useProfileStore = create<ProfileState>()(
                     ...state.profiles,
                     {
                         ...newProfile,
-                        id: uuidv4(),
+                        id: newProfile.id || uuidv4(),
                         lastActive: 'Never',
                         status: 'unknown', // Default status for new connections
                     }

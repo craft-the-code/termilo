@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSessionStore } from '@/store/sessionStore';
 import { useProfileStore } from '@/store/profileStore';
+import { useUIStore } from '@/store/uiStore';
 import { AuthPromptModal } from '@/components/Modals/AuthPromptModal';
 import '@xterm/xterm/css/xterm.css';
 
@@ -25,7 +26,8 @@ export function Terminal({ sessionId }: TerminalProps) {
     const [, setAuthCredentials] = useState<{ password?: string; keyPath?: string } | null>(null);
 
     const { sessions, updateSession } = useSessionStore();
-    const { getProfile } = useProfileStore();
+    const { getProfile, updateProfile } = useProfileStore();
+    const { fontSize, fontFamily, lineHeight } = useUIStore();
 
     const session = sessions.find(s => s.id === sessionId);
     const profile = session ? getProfile(session.profileId) : undefined;
@@ -74,6 +76,12 @@ export function Terminal({ sessionId }: TerminalProps) {
                 status: 'connected'
             });
 
+            // Update profile status to live
+            updateProfile(profile.id, {
+                status: 'live',
+                lastActive: 'Just now'
+            });
+
             // Start reading output stream with a small delay
             setTimeout(async () => {
                 if (!streamStarted.current) {
@@ -99,6 +107,9 @@ export function Terminal({ sessionId }: TerminalProps) {
                 isConnecting: false,
                 status: 'disconnected'
             });
+
+            // Update profile status to error
+            updateProfile(profile.id, { status: 'error' });
 
             if (xtermRef.current) {
                 xtermRef.current.writeln(`\x1b[1;31m✗ Connection failed: ${error}\x1b[0m`);
@@ -191,6 +202,8 @@ export function Terminal({ sessionId }: TerminalProps) {
 
     // Initialize terminal - prevent double initialization
     useEffect(() => {
+        // Warning: We are using a ref to track initialization, but if sessionId changes,
+        // we might need to re-init. Currently sessionId shouldn't change for the same component instance.
         if (!terminalRef.current || xtermRef.current || isInitialized.current) return;
 
         console.log('Initializing terminal for session:', sessionId);
@@ -198,8 +211,9 @@ export function Terminal({ sessionId }: TerminalProps) {
 
         const term = new XTerm({
             cursorBlink: true,
-            fontSize: 14,
-            fontFamily: 'JetBrains Mono, Monaco, Menlo, "Ubuntu Mono", monospace',
+            fontSize: fontSize,
+            fontFamily: fontFamily,
+            lineHeight: lineHeight,
             theme: {
                 background: '#0F172A', // slate-900
                 foreground: '#E2E8F0', // slate-200
@@ -228,9 +242,27 @@ export function Terminal({ sessionId }: TerminalProps) {
 
         xtermRef.current = term;
 
-        term.writeln('\x1b[1;34mWelcome to Termilo\x1b[0m');
-        term.writeln('Initializing connection...');
+        // term.writeln('\x1b[1;34mWelcome to Termilo\x1b[0m'); // Optional welcome message
+        // term.writeln('Initializing connection...'); // Optional status
     }, [sessionId]);
+
+    // Update options when settings change
+    useEffect(() => {
+        if (xtermRef.current) {
+            xtermRef.current.options.fontSize = fontSize;
+            xtermRef.current.options.fontFamily = fontFamily;
+            xtermRef.current.options.lineHeight = lineHeight;
+
+            // Refresh layout
+            if (fitAddonRef.current) {
+                try {
+                    fitAddonRef.current.fit();
+                } catch (e) {
+                    // ignore
+                }
+            }
+        }
+    }, [fontSize, fontFamily, lineHeight]);
 
     // Handle keyboard input
     useEffect(() => {

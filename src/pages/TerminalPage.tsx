@@ -25,7 +25,7 @@ export function TerminalPage() {
     };
 
     return (
-        <div className="flex flex-col h-screen w-full bg-[#0f111a] overflow-hidden">
+        <div className="flex flex-col h-full w-full bg-[#0f111a] overflow-hidden">
             {/* Tab Bar */}
             <div className="flex items-center h-10 bg-[#1e293b] border-b border-[#334155] px-2 gap-1 overflow-x-auto">
                 {sessions.map(session => (
@@ -70,8 +70,13 @@ export function TerminalPage() {
             <div className="h-6 bg-[#0f172a] border-t border-[#1e293b] flex items-center px-4 text-xs text-slate-500 justify-between">
                 <div className="flex items-center gap-4">
                     <span className="flex items-center gap-1">
-                        <span className={`w-2 h-2 rounded-full ${activeSession.status === 'connected' ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
-                        {activeSession.status === 'connected' ? 'Connected' : 'Connecting...'}
+                        <span className={`w-2 h-2 rounded-full ${activeSession.status === 'connected' ? 'bg-green-500' :
+                                activeSession.status === 'disconnected' ? 'bg-red-500' :
+                                    'bg-yellow-500 animate-pulse'
+                            }`}></span>
+                        {activeSession.status === 'connected' ? 'Connected' :
+                            activeSession.status === 'disconnected' ? 'Disconnected' :
+                                'Connecting...'}
                     </span>
                     <span>SSH: {profile?.username}@{profile?.host}</span>
                 </div>
