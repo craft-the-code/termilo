@@ -9,11 +9,34 @@ import "./App.css";
 
 function App() {
   const { activeSessionId, currentView } = useSessionStore();
-  const { hasCompletedOnboarding } = useUIStore();
+  const { hasCompletedOnboarding, theme } = useUIStore();
 
+  // Apply theme to document
   useEffect(() => {
-    // Optional: Prevent default browser shortcuts like Ctrl+F
-  }, []);
+    const root = document.documentElement;
+
+    // Remove existing theme classes
+    root.classList.remove('light', 'dark');
+
+    if (theme === 'system') {
+      // Detect system preference
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.classList.add(isDark ? 'dark' : 'light');
+
+      // Listen for system theme changes
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = (e: MediaQueryListEvent) => {
+        root.classList.remove('light', 'dark');
+        root.classList.add(e.matches ? 'dark' : 'light');
+      };
+
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    } else {
+      // Apply explicit theme
+      root.classList.add(theme);
+    }
+  }, [theme]);
 
   if (!hasCompletedOnboarding) {
     return <OnboardingFlow />;

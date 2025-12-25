@@ -3,9 +3,11 @@
 @plugin "tailwindcss-animate";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant light (&:is(.light *));
 
-:root {
-  /* Enforce Dark Theme by default (Slate/Blue Palette) */
+:root,
+:root.dark {
+  /* Dark Theme (Slate/Blue Palette) */
   --background: 222.2 47.4% 11.2%;
   /* slate-950 */
   --foreground: 210 40% 98%;
@@ -54,6 +56,57 @@
   --sidebar-accent-foreground: 210 40% 98%;
   --sidebar-border: 217.2 32.6% 17.5%;
   --sidebar-ring: 212.7 26.8% 83.9%;
+}
+
+:root.light {
+  /* Light Theme (Clean & Modern) */
+  --background: 0 0% 100%;
+  /* white */
+  --foreground: 222.2 47.4% 11.2%;
+  /* slate-950 */
+
+  --card: 0 0% 100%;
+  /* white */
+  --card-foreground: 222.2 47.4% 11.2%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 47.4% 11.2%;
+
+  --primary: 217.2 91.2% 59.8%;
+  /* blue-500 */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 40% 96.1%;
+  /* slate-100 */
+  --secondary-foreground: 222.2 47.4% 11.2%;
+
+  --muted: 210 40% 96.1%;
+  /* slate-100 */
+  --muted-foreground: 215.4 16.3% 46.9%;
+  /* slate-600 */
+
+  --accent: 210 40% 96.1%;
+  /* slate-100 */
+  --accent-foreground: 222.2 47.4% 11.2%;
+
+  --destructive: 0 84.2% 60.2%;
+  /* red-500 */
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 214.3 31.8% 91.4%;
+  /* slate-200 */
+  --input: 214.3 31.8% 91.4%;
+  --ring: 217.2 91.2% 59.8%;
+
+  --sidebar: 0 0% 100%;
+  /* white */
+  --sidebar-foreground: 222.2 47.4% 11.2%;
+  --sidebar-primary: 217.2 91.2% 59.8%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 210 40% 96.1%;
+  --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+  --sidebar-border: 214.3 31.8% 91.4%;
+  --sidebar-ring: 217.2 91.2% 59.8%;
 }
 
 body {
