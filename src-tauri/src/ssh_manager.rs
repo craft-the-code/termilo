@@ -114,6 +114,10 @@ impl SshManager {
         channel.shell()
             .map_err(|e| format!("Failed to start shell: {}", e))?;
 
+        // Merge STDERR into STDOUT to prevent duplicate output streams
+        channel.handle_extended_data(ssh2::ExtendedData::Merge)
+            .map_err(|e| format!("Failed to configure extended data: {}", e))?;
+
         // NOW set to non-blocking mode AFTER channel is fully configured
         session.set_blocking(false);
 
@@ -176,13 +180,16 @@ impl SshManager {
         // Spawn tokio task to read output
         tokio::spawn(async move {
             let mut buffer = vec![0u8; 8192];
+            let mut output_buffer = String::new();
+            let mut last_emit = std::time::Instant::now();
             let mut consecutive_errors = 0;
             let max_consecutive_errors = 10;
 
-            loop {
-                // Small delay to prevent tight loop
-                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            // Batch output for better performance and to prevent duplication
+            const EMIT_INTERVAL_MS: u64 = 16; // ~60fps
+            const MAX_BUFFER_SIZE: usize = 4096;
 
+            loop {
                 // Read from channel
                 let read_result = {
                     let mut sessions_lock = sessions.lock();
@@ -198,31 +205,29 @@ impl SshManager {
                     } else {
                         None
                     }
-                };
+                }; // Mutex lock released here
 
-                match read_result {
+                let should_continue = match read_result {
                     Some(Ok(0)) => {
                         // EOF - connection closed
                         let _ = app_handle.emit("ssh-output-closed", SshClosedPayload {
                             session_id: session_id.clone(),
                             message: Some("Connection closed by remote host".to_string()),
                         });
-                        break;
+                        false
                     }
                     Some(Ok(n)) => {
-                        // Successfully read data
+                        // Successfully read data - buffer it instead of immediate emit
                         consecutive_errors = 0;
-                        let data = String::from_utf8_lossy(&buffer[..n]).to_string();
-
-                        let _ = app_handle.emit("ssh-output", SshOutputPayload {
-                            session_id: session_id.clone(),
-                            data,
-                        });
+                        let new_output = String::from_utf8_lossy(&buffer[..n]);
+                        output_buffer.push_str(&new_output);
+                        true
                     }
                     Some(Err(e)) => {
                         if e.kind() == std::io::ErrorKind::WouldBlock {
                             // No data available, wait a bit
                             consecutive_errors = 0;
+                            true
                         } else {
                             consecutive_errors += 1;
 
@@ -231,17 +236,50 @@ impl SshManager {
                                     session_id: session_id.clone(),
                                     error: format!("Read error: {}", e),
                                 });
-                                break;
+                                false
+                            } else {
+                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                                true
                             }
-
-                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         }
                     }
                     None => {
                         // Session no longer exists
-                        break;
+                        false
                     }
+                };
+
+                if !should_continue {
+                    break;
                 }
+
+                // Emit buffered output at intervals or when buffer is large
+                let now = std::time::Instant::now();
+                let should_emit = !output_buffer.is_empty()
+                    && (now.duration_since(last_emit).as_millis() >= EMIT_INTERVAL_MS as u128
+                        || output_buffer.len() >= MAX_BUFFER_SIZE);
+
+                if should_emit {
+                    let _ = app_handle.emit("ssh-output", SshOutputPayload {
+                        session_id: session_id.clone(),
+                        data: output_buffer.clone(),
+                    });
+                    output_buffer.clear();
+                    last_emit = now;
+                }
+
+                // Small sleep only when no data was read to prevent tight loop
+                if output_buffer.is_empty() {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+                }
+            }
+
+            // Emit any remaining buffered output before cleanup
+            if !output_buffer.is_empty() {
+                let _ = app_handle.emit("ssh-output", SshOutputPayload {
+                    session_id: session_id.clone(),
+                    data: output_buffer,
+                });
             }
 
             // Cleanup session on exit
