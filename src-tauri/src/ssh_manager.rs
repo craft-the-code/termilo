@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::io::{Read, Write};
 use parking_lot::Mutex;
-use tauri::Manager;
+use tauri::{Manager, Emitter};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,14 +75,13 @@ impl SshManager {
         let mut session = Session::new()
             .map_err(|e| format!("Failed to create SSH session: {}", e))?;
 
-        // Set session to non-blocking mode
-        session.set_blocking(false);
-
         session.set_tcp_stream(tcp);
+
+        // Complete handshake in BLOCKING mode
         session.handshake()
             .map_err(|e| format!("SSH handshake failed: {}", e))?;
 
-        // Authenticate
+        // Authenticate in BLOCKING mode
         match profile.auth_method.as_str() {
             "password" => {
                 let password = profile.password.ok_or("Password required but not provided")?;
@@ -104,6 +103,9 @@ impl SshManager {
         if !session.authenticated() {
             return Err("Authentication failed".to_string());
         }
+
+        // NOW set to non-blocking mode AFTER authentication succeeds
+        session.set_blocking(false);
 
         // Request PTY and shell
         let mut channel = session.channel_session()
