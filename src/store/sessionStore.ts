@@ -9,6 +9,7 @@ export interface Session {
     timestamp: number;
     isConnected: boolean;
     isConnecting: boolean;
+    initialCommand?: string;
 }
 
 interface SessionState {
@@ -16,14 +17,14 @@ interface SessionState {
     activeSessionId: string | null;
     currentView: 'dashboard' | 'terminal';
 
-    addSession: (profileId: string, title: string) => void;
+    addSession: (profileId: string, title: string, initialCommand?: string) => void;
     removeSession: (id: string) => void;
     setActiveSession: (id: string | null) => void;
     setView: (view: 'dashboard' | 'terminal') => void;
     updateSession: (id: string, updates: Partial<Session>) => void;
 
     // Actions using current state
-    connect: (profileId: string, title: string) => void;
+    connect: (profileId: string, title: string, initialCommand?: string) => void;
     disconnect: (id: string) => void;
 }
 
@@ -32,7 +33,7 @@ export const useSessionStore = create<SessionState>((set) => ({
     activeSessionId: null,
     currentView: 'dashboard',
 
-    addSession: (profileId, title) => set((state) => {
+    addSession: (profileId, title, initialCommand) => set((state) => {
         const newSession: Session = {
             id: uuidv4(),
             profileId,
@@ -41,6 +42,7 @@ export const useSessionStore = create<SessionState>((set) => ({
             timestamp: Date.now(),
             isConnected: false,
             isConnecting: false,
+            initialCommand,
         };
         return {
             sessions: [...state.sessions, newSession],
@@ -70,7 +72,7 @@ export const useSessionStore = create<SessionState>((set) => ({
         sessions: state.sessions.map(s => s.id === id ? { ...s, ...updates } : s)
     })),
 
-    connect: (profileId, title) => {
+    connect: (profileId, title, initialCommand) => {
         // Alias for addSession for semantics
         return set((state) => {
             const newSession: Session = {
@@ -81,6 +83,7 @@ export const useSessionStore = create<SessionState>((set) => ({
                 timestamp: Date.now(),
                 isConnected: false,
                 isConnecting: false,
+                initialCommand,
             };
             return {
                 sessions: [...state.sessions, newSession],

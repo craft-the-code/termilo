@@ -46,6 +46,7 @@ interface FormValues {
     authType: 'password' | 'key';
     password?: string;
     keyPath?: string;
+    groupId?: string | null;
 }
 
 const defaultValues: FormValues = {
@@ -58,10 +59,11 @@ const defaultValues: FormValues = {
     authType: 'password',
     password: '',
     keyPath: '',
+    groupId: null,
 };
 
 export function ConnectionModal({ open, onOpenChange, editId }: ConnectionModalProps) {
-    const { addProfile, updateProfile, getProfile } = useProfileStore();
+    const { addProfile, updateProfile, getProfile, groups } = useProfileStore();
     const [showPassword, setShowPassword] = useState(false);
 
     const form = useForm<FormValues>({
@@ -87,6 +89,7 @@ export function ConnectionModal({ open, onOpenChange, editId }: ConnectionModalP
                         authType: profile.authType,
                         password: profile.password || '',
                         keyPath: profile.keyPath || '',
+                        groupId: profile.groupId || null,
                     });
                 }
             } else {
@@ -102,6 +105,7 @@ export function ConnectionModal({ open, onOpenChange, editId }: ConnectionModalP
             // Clean up unused fields based on auth type
             password: data.authType === 'password' ? data.password : undefined,
             keyPath: data.authType === 'key' ? data.keyPath : undefined,
+            groupId: data.groupId,
         };
 
         if (editId) {
@@ -206,6 +210,35 @@ export function ConnectionModal({ open, onOpenChange, editId }: ConnectionModalP
                                     )}
                                 />
                             </div>
+
+                            <FormField
+                                control={form.control}
+                                name="groupId"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Group</FormLabel>
+                                        <Select
+                                            onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                                            value={field.value || "none"}
+                                        >
+                                            <FormControl>
+                                                <SelectTrigger className="bg-slate-950 border-slate-800">
+                                                    <SelectValue placeholder="No Group" />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="none">No Group (Root)</SelectItem>
+                                                {groups.map((group) => (
+                                                    <SelectItem key={group.id} value={group.id}>
+                                                        {group.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
                         </div>
 
                         {/* Authentication Section */}

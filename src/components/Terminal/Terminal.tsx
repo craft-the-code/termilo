@@ -91,10 +91,23 @@ export function Terminal({ sessionId }: TerminalProps) {
                 xtermRef.current.writeln(`\x1b[1;32m✓ Connected to ${profile.name}\x1b[0m`);
             }
 
+            // Execute initial command if present
+            if (session.initialCommand) {
+                const cmd = session.initialCommand;
+                // Add a small delay to ensure shell is ready
+                setTimeout(async () => {
+                    if (xtermRef.current) {
+                        xtermRef.current.writeln(`\r\n\x1b[36m> Executing script...\x1b[0m\r\n`);
+                    }
+                    await invoke('send_command', { sessionId, command: cmd + '\r' });
+                }, 800);
+            }
+
             updateSession(sessionId, {
                 isConnected: true,
                 isConnecting: false,
-                status: 'connected'
+                status: 'connected',
+                initialCommand: undefined // Clear prompt so it doesn't run again if we had re-connection logic
             });
 
             // Update profile status to live

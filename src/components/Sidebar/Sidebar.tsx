@@ -5,12 +5,21 @@ import { Separator } from '@/components/ui/separator';
 import { useSessionStore } from '@/store/sessionStore';
 import { QuickConnectModal } from '@/components/Modals/QuickConnectModal';
 import { SettingsModal } from '@/components/Modals/SettingsModal';
+import { TreeView } from '@/components/Tree/TreeView';
+import { NewGroupModal } from '@/components/Modals/NewGroupModal';
+import { MoveToGroupModal } from '@/components/Modals/MoveToGroupModal';
+import { ScriptManagerModal } from '@/components/Modals/ScriptManagerModal';
+import { useProfileStore } from '@/store/profileStore';
 
 export function Sidebar() {
     const [collapsed, setCollapsed] = useState(false);
     const [showQuickConnect, setShowQuickConnect] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [showNewGroup, setShowNewGroup] = useState(false);
+    const [showScriptManager, setShowScriptManager] = useState(false);
+    const [moveProfileId, setMoveProfileId] = useState<string | null>(null);
     const { setView, currentView, sessions } = useSessionStore();
+    const { deleteGroup, deleteProfile } = useProfileStore(); // Need to import useProfileStore
 
     return (
         <div
@@ -66,9 +75,48 @@ export function Sidebar() {
                     />
                 )}
 
-                <NavItem icon="dns" label="Connections" collapsed={collapsed} onClick={() => setView('dashboard')} />
-                <NavItem icon="folder" label="Groups" collapsed={collapsed} />
-                <NavItem icon="history" label="Recent" collapsed={collapsed} />
+                <Separator className="my-2 bg-sidebar-border" />
+
+                {!collapsed ? (
+                    <div className="flex-1 overflow-y-auto px-1">
+                        <div className="px-2 mb-2 text-xs font-medium text-muted-foreground uppercase flex items-center justify-between group/header">
+                            <span>Connections</span>
+                            <div className="flex gap-1 opacity-0 group-hover/header:opacity-100 transition-opacity">
+                                <span
+                                    className="material-symbols-outlined text-[16px] cursor-pointer hover:text-foreground"
+                                    title="New Folder"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowNewGroup(true);
+                                    }}
+                                >
+                                    create_new_folder
+                                </span>
+                                <span className="material-symbols-outlined text-[16px] cursor-pointer hover:text-foreground" title="New Connection">add</span>
+                            </div>
+                        </div>
+                        <TreeView
+                            onProfileSelect={() => {
+                                setView('dashboard');
+                            }}
+                            onDeleteGroup={(group) => {
+                                if (confirm(`Are you sure you want to delete folder "${group.name}"? Contents will be moved to root.`)) {
+                                    deleteGroup(group.id);
+                                }
+                            }}
+                            onMoveProfile={(profile) => {
+                                setMoveProfileId(profile.id);
+                            }}
+                            onDeleteProfile={(profile) => {
+                                if (confirm(`Are you sure you want to delete connection "${profile.name}"?`)) {
+                                    deleteProfile(profile.id);
+                                }
+                            }}
+                        />
+                    </div>
+                ) : (
+                    <NavItem icon="dns" label="Connections" collapsed={collapsed} onClick={() => setView('dashboard')} />
+                )}
 
                 <Separator className="my-2 bg-sidebar-border" />
 
@@ -80,6 +128,12 @@ export function Sidebar() {
                     label="Preferences"
                     collapsed={collapsed}
                     onClick={() => setShowSettings(true)}
+                />
+                <NavItem
+                    icon="terminal"
+                    label="Scripts"
+                    collapsed={collapsed}
+                    onClick={() => setShowScriptManager(true)}
                 />
                 <NavItem icon="key" label="Keybindings" collapsed={collapsed} />
             </div>
@@ -101,6 +155,13 @@ export function Sidebar() {
 
             <QuickConnectModal open={showQuickConnect} onOpenChange={setShowQuickConnect} />
             <SettingsModal open={showSettings} onOpenChange={setShowSettings} />
+            <NewGroupModal open={showNewGroup} onOpenChange={setShowNewGroup} />
+            <MoveToGroupModal
+                open={!!moveProfileId}
+                onOpenChange={(open) => !open && setMoveProfileId(null)}
+                profileId={moveProfileId}
+            />
+            <ScriptManagerModal open={showScriptManager} onOpenChange={setShowScriptManager} />
         </div>
     );
 }

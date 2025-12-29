@@ -21,26 +21,50 @@
     - **Delete**: `DeleteConfirmDialog`.
 - **Status**: Verified. Modals and Store are fully functional.
 
-## Phase 3: Terminal & Session Logic (🚧 In Progress)
+## Phase 3: Terminal & Session Logic (✅ Completed)
 **Goal**: Implement the active terminal interface and session management.
 - **State Management**: `SessionStore` (Manages active tabs/connections).
 - **Components**:
     - `TerminalPage`: Main view for active sessions.
     - `TerminalTabs`: Tab bar for switching sessions.
     - `Terminal`: Wrapper for xterm.js.
-- **Key Tasks**:
-    - [x] Create SessionStore.
-    - [x] Create TerminalPage UI.
-    - [x] Route switching (Dashboard <-> Terminal).
-    - [ ] Enhance `Terminal.tsx` with `fit-addon` and ResizeObserver.
-    - [ ] Verify SSH/Native connection logic (Mocked for now).
+- **Status**: Core functionality verified.
 
-## Phase 4: Advanced Features (📅 Planned)
-**Goal**: Add professional developer features.
-- **Script Library**: Store and run snippets.
+## Phase 4: Connection Management & Tree View (🚧 In Progress)
+**Goal**: Implement a robust tree-view hierarchy for connection management and refine UI layout.
+- **Features**:
+    - **Tree View System**:
+        - Support for nested folders (Country/Region > City > Sub Group).
+        - Client grouping (Clients > Project Group).
+        - Label/Tag-based organization (Personal/Company).
+    - **UI Layout Reconsolidation**:
+        - Update Sidebar/Dashboard to support collapsible tree structures.
+        - Improve layout for dense hierarchies.
+- **Process & Conventions**:
+    - Proactive documentation updates (Task & Implementation Plan).
+    - Document technical conventions (Icons, Store patterns).
+- **Deferred Tasks**:
+    - Cloud Sync (Moved to Phase 5).
+    - SSH Advanced Features (Moved to Phase 5).
+
+## Phase 5: Advanced Features (Scripting & Automation)
+Goal: Add scripting capabilities and multi-session automation.
+
+### Script Library
+- [ ] Create `scriptStore` (id, name, content, description).
+- [ ] Implement `ScriptManagerModal` for CRUD operations.
+- [ ] Add built-in scripts (System Info, Docker Stats, etc.).
+
+### Multi-Execution Logic
+- [ ] Update `Session` interface to include `initialCommand`.
+- [ ] Update `Terminal` component to execute `initialCommand` on connection success.
+- [ ] Create `ScriptRunnerModal` to select multiple target connections.
+- [ ] Implement execution logic:
+    - If session active: Send command.
+    - If not active: Open new session with `initialCommand`.
 - **Split View**: Multiple terminals side-by-side.
 - **Cloud Sync**: Google Drive integration for profiles.
-- **SSH Advanced**: Key management, Agent forwarding, SFTP.
+- **SSH Advanced**: Key management, Agent forwarding.
 
 ## Components & File Structure Map
 - `src/stores/`: `profileStore.ts`, `sessionStore.ts`
